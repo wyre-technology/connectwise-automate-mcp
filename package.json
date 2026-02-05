@@ -1,0 +1,64 @@
+{
+  "name": "@wyre-technology/connectwise-automate-mcp",
+  "version": "0.0.0-semantically-released",
+  "description": "ConnectWise Automate MCP server with decision tree architecture for Claude",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "connectwise-automate-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wyre-technology/connectwise-automate-mcp.git"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "connectwise",
+    "automate",
+    "rmm",
+    "msp",
+    "decision-tree"
+  ],
+  "author": "Wyre Technology",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/wyre-technology/connectwise-automate-mcp/issues"
+  },
+  "homepage": "https://github.com/wyre-technology/connectwise-automate-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "peerDependencies": {
+    "@asachs01/node-connectwise-automate": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@asachs01/node-connectwise-automate": {
+      "optional": false
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
