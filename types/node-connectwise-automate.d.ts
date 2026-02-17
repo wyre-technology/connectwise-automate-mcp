@@ -1,10 +1,10 @@
 /**
- * Type declarations for @asachs01/node-connectwise-automate
+ * Type declarations for @wyre-technology/node-connectwise-automate
  *
  * These are stub declarations until the actual library is published.
  */
 
-declare module "@asachs01/node-connectwise-automate" {
+declare module "@wyre-technology/node-connectwise-automate" {
   export interface ConnectWiseAutomateConfig {
     serverUrl: string;
     clientId: string;
