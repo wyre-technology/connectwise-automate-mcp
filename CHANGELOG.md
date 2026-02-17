@@ -1,3 +1,28 @@
+# [1.1.0](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.0.0...v1.1.0) (2026-02-17)
+
+
+### Bug Fixes
+
+* **ci:** fix release workflow with npm auth, Node 22, and Docker build ([3b81a43](https://github.com/wyre-technology/connectwise-automate-mcp/commit/3b81a4338608a687491d5de2e6d625009549d1b3))
+* **ci:** remove old [@asachs01](https://github.com/asachs01) scope from .npmrc ([7fa6cb7](https://github.com/wyre-technology/connectwise-automate-mcp/commit/7fa6cb72a484a068804b37e5c5fce938dc64acd8))
+* **ci:** replace Dockerfile with proper multi-stage build ([e73dbb6](https://github.com/wyre-technology/connectwise-automate-mcp/commit/e73dbb686e0a1922a5c1142ce6b8ff17d57bb858))
+* **ci:** revert ci.yml release job scope to [@asachs01](https://github.com/asachs01) ([e86c99e](https://github.com/wyre-technology/connectwise-automate-mcp/commit/e86c99e793c4cfe74d14d45632c798a967f7d9a7))
+* **ci:** revert release.yml npm config to [@asachs01](https://github.com/asachs01) scope ([5c879ed](https://github.com/wyre-technology/connectwise-automate-mcp/commit/5c879ed123f9b18273c6c1fc583535aa4e44c9fb))
+* **ci:** update dependency scope from [@asachs01](https://github.com/asachs01) to [@wyre-technology](https://github.com/wyre-technology) ([c9e78bc](https://github.com/wyre-technology/connectwise-automate-mcp/commit/c9e78bce9ecfc6fb08737d27e6ac6f15e9caad9f))
+* **docker:** use [@asachs01](https://github.com/asachs01) scope in .npmrc during build ([80e92aa](https://github.com/wyre-technology/connectwise-automate-mcp/commit/80e92aac2343ed0d72e515586ba9462c9dffea7a))
+* escape newlines in .releaserc.json message template ([bd71ee4](https://github.com/wyre-technology/connectwise-automate-mcp/commit/bd71ee4dc67a82fd4dc93ccf9c29e7bf345c40da))
+* revert .npmrc to [@asachs01](https://github.com/asachs01) scope for GitHub Packages registry ([4ee14cf](https://github.com/wyre-technology/connectwise-automate-mcp/commit/4ee14cfb76cafd9b10d545f4f097c86830765de6))
+* revert peerDependencies to [@asachs01](https://github.com/asachs01) scope (package not published under [@wyre-technology](https://github.com/wyre-technology)) ([9292efc](https://github.com/wyre-technology/connectwise-automate-mcp/commit/9292efc6d9726f93d34bbbd196e592f098db54ee))
+
+
+### Features
+
+* add mcpb packaging support ([891251c](https://github.com/wyre-technology/connectwise-automate-mcp/commit/891251c7b38dccb1833fbea0d8c3bd20903d8f85))
+* add mcpb packaging support ([0f019fd](https://github.com/wyre-technology/connectwise-automate-mcp/commit/0f019fdb88260aff2361886e0a4939e0ea9ed86d))
+* add mcpb packaging support ([b47adfb](https://github.com/wyre-technology/connectwise-automate-mcp/commit/b47adfbef4ad41b24267ccb4a5faf4938f6fb5d4))
+* add mcpb packaging support ([b572546](https://github.com/wyre-technology/connectwise-automate-mcp/commit/b572546b9d7496ee1eaf52c6738939303bb320e3))
+* add mcpb packaging support ([2f3057b](https://github.com/wyre-technology/connectwise-automate-mcp/commit/2f3057b60183dbafcd0fb02334636b044e762afe))
+
 # 1.0.0 (2026-02-13)
 
 
