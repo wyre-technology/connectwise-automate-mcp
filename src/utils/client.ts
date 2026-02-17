@@ -5,7 +5,7 @@
  * to avoid loading the entire library upfront.
  */
 
-import type { ConnectWiseAutomateClient } from "@asachs01/node-connectwise-automate";
+import type { ConnectWiseAutomateClient } from "@wyre-technology/node-connectwise-automate";
 
 export interface CWAutomateCredentials {
   serverUrl: string;
@@ -63,7 +63,7 @@ export async function getClient(): Promise<ConnectWiseAutomateClient> {
   if (!_client) {
     // Lazy import the library
     const { ConnectWiseAutomateClient } = await import(
-      "@asachs01/node-connectwise-automate"
+      "@wyre-technology/node-connectwise-automate"
     );
     _client = new ConnectWiseAutomateClient({
       serverUrl: creds.serverUrl,
