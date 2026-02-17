@@ -45,10 +45,10 @@
     "@modelcontextprotocol/sdk": "^1.12.0"
   },
   "peerDependencies": {
-    "@asachs01/node-connectwise-automate": "^1.0.0"
+    "@wyre-technology/node-connectwise-automate": "^1.0.0"
   },
   "peerDependenciesMeta": {
-    "@asachs01/node-connectwise-automate": {
+    "@wyre-technology/node-connectwise-automate": {
       "optional": false
     }
   },
