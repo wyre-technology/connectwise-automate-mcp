@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { getCredentials, getClient, clearClient } from "../utils/client.js";
 
 // Mock the node-connectwise-automate library
-vi.mock("@asachs01/node-connectwise-automate", () => ({
+vi.mock("@wyre-technology/node-connectwise-automate", () => ({
   ConnectWiseAutomateClient: vi.fn().mockImplementation((config) => ({
     config,
     computers: {
