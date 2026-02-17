@@ -1,81 +1,30 @@
 {
   "manifest_version": "0.3",
   "name": "connectwise-automate-mcp",
-  "version": "0.0.1",
   "display_name": "ConnectWise Automate MCP Server",
-  "description": "ConnectWise Automate MCP server with decision tree architecture for Claude",
-  "author": {
-    "name": "Wyre Technology",
-    "url": "https://github.com/wyre-technology"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/wyre-technology/connectwise-automate-mcp"
-  },
+  "version": "0.0.0",
+  "description": "MCP server for ConnectWise Automate - access computers, clients, scripts, and patches through AI assistants",
+  "long_description": "Provides AI assistants with structured access to your ConnectWise Automate data. Manage computers, clients, scripts, patches, and monitors through the Model Context Protocol.",
+  "author": { "name": "Wyre Technology", "url": "https://github.com/wyre-technology" },
+  "repository": { "type": "git", "url": "https://github.com/wyre-technology/connectwise-automate-mcp" },
   "homepage": "https://github.com/wyre-technology/connectwise-automate-mcp",
-  "license": "MIT",
-  "keywords": [
-    "connectwise",
-    "automate",
-    "rmm",
-    "monitoring",
-    "msp",
-    "it-management"
-  ],
+  "license": "Apache-2.0",
+  "keywords": ["connectwise", "automate", "rmm", "msp", "it-management"],
   "server": {
     "type": "node",
     "entry_point": "dist/index.js",
     "mcp_config": {
       "command": "node",
-      "args": [
-        "${__dirname}/dist/index.js"
-      ],
-      "env": {
-        "CW_AUTOMATE_SERVER_URL": "${user_config.cw_automate_server_url}",
-        "CW_AUTOMATE_CLIENT_ID": "${user_config.cw_automate_client_id}",
-        "CW_AUTOMATE_USERNAME": "${user_config.cw_automate_username}",
-        "CW_AUTOMATE_PASSWORD": "${user_config.cw_automate_password}",
-        "MCP_TRANSPORT": "stdio"
-      }
+      "args": ["${__dirname}/dist/index.js"],
+      "env": { "CW_AUTOMATE_SERVER_URL": "${user_config.cw_automate_server_url}", "CW_AUTOMATE_CLIENT_ID": "${user_config.cw_automate_client_id}", "CW_AUTOMATE_USERNAME": "${user_config.cw_automate_username}", "CW_AUTOMATE_PASSWORD": "${user_config.cw_automate_password}", "MCP_TRANSPORT": "stdio" }
     }
   },
   "tools_generated": true,
   "user_config": {
-    "cw_automate_server_url": {
-      "type": "string",
-      "title": "Server URL",
-      "description": "Your ConnectWise Automate server URL",
-      "required": true
-    },
-    "cw_automate_client_id": {
-      "type": "string",
-      "title": "Client ID",
-      "description": "Your ConnectWise Automate client ID",
-      "required": true
-    },
-    "cw_automate_username": {
-      "type": "string",
-      "title": "Username",
-      "description": "Your ConnectWise Automate username",
-      "required": true
-    },
-    "cw_automate_password": {
-      "type": "string",
-      "title": "Password",
-      "description": "Your ConnectWise Automate password",
-      "required": true,
-      "sensitive": true
-    }
+    "cw_automate_server_url": { "type": "string", "title": "Server URL", "description": "Your ConnectWise Automate server URL", "sensitive": false, "required": true },
+    "cw_automate_client_id": { "type": "string", "title": "Client ID", "description": "Your ConnectWise Automate client ID", "sensitive": true, "required": true },
+    "cw_automate_username": { "type": "string", "title": "Username", "description": "Your ConnectWise Automate username", "sensitive": true, "required": true },
+    "cw_automate_password": { "type": "string", "title": "Password", "description": "Your ConnectWise Automate password", "sensitive": true, "required": true }
   },
-  "compatibility": {
-    "platforms": [
-      "darwin",
-      "win32",
-      "linux"
-    ],
-    "runtimes": {
-      "node": ">=18.0.0"
-    },
-    "claude_desktop": ">=0.10.0"
-  }
+  "compatibility": { "platforms": ["darwin", "win32", "linux"], "runtimes": { "node": ">=18.0.0" }, "claude_desktop": ">=0.10.0" }
 }
