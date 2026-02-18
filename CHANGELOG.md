@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.0...v1.2.1) (2026-02-18)
+
+
+### Bug Fixes
+
+* use npm install in Dockerfile for lock file compatibility ([afe02b3](https://github.com/wyre-technology/connectwise-automate-mcp/commit/afe02b340d6b8dfd60e8b89625cc619114d2e422))
+
 # [1.2.0](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.1.0...v1.2.0) (2026-02-18)
 
 
