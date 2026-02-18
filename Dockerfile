@@ -4,7 +4,7 @@ COPY package*.json .npmrc ./
 ARG GITHUB_TOKEN
 RUN echo "@wyre-technology:registry=https://npm.pkg.github.com" > .npmrc && \
     echo "//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}" >> .npmrc && \
-    npm ci && \
+    npm install && \
     rm -f .npmrc
 COPY . .
 RUN npm run build
