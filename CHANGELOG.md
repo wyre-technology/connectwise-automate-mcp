@@ -1,3 +1,19 @@
+# [1.2.0](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.1.0...v1.2.0) (2026-02-18)
+
+
+### Bug Fixes
+
+* **ci:** fix release workflow failures ([3107f4c](https://github.com/wyre-technology/connectwise-automate-mcp/commit/3107f4c4ed7abb3e32bb6cbb55836ce390b40e35))
+* **docker:** drop arm64 platform to fix QEMU build failures ([29951e6](https://github.com/wyre-technology/connectwise-automate-mcp/commit/29951e6cec869b9ef93695f1639cc5806ac74a18))
+* use npm install instead of npm ci for lock file compatibility ([2c0134a](https://github.com/wyre-technology/connectwise-automate-mcp/commit/2c0134abd794e71313cec9203f4f89f67dd99648))
+
+
+### Features
+
+* add MCPB bundle to release workflow ([bdab179](https://github.com/wyre-technology/connectwise-automate-mcp/commit/bdab1791ea198b523db877773026bd89665b9b20))
+* add MCPB manifest for desktop installation ([7661d6c](https://github.com/wyre-technology/connectwise-automate-mcp/commit/7661d6ccf31fc5347bdf0eab833d993801b361ac))
+* add MCPB pack script ([396e797](https://github.com/wyre-technology/connectwise-automate-mcp/commit/396e7978cb78ae15aa8851f8bb7d63e85952cf6d))
+
 # [1.1.0](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.0.0...v1.1.0) (2026-02-17)
 
 
