@@ -1,3 +1,10 @@
+## [1.2.3](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.2...v1.2.3) (2026-02-26)
+
+
+### Bug Fixes
+
+* **ci:** move Discord notification into release workflow ([162ea77](https://github.com/wyre-technology/connectwise-automate-mcp/commit/162ea77269fb745e01b0c38e2a83017203ef0322))
+
 ## [1.2.2](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.1...v1.2.2) (2026-02-18)
 
 
