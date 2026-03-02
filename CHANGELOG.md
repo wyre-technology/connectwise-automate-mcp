@@ -1,3 +1,10 @@
+## [1.2.5](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.4...v1.2.5) (2026-03-02)
+
+
+### Bug Fixes
+
+* **ci:** use Node 22 in release job for semantic-release v25 compatibility ([ab5fd65](https://github.com/wyre-technology/connectwise-automate-mcp/commit/ab5fd65c7760016f9fdec001e71297017f8fd3e8))
+
 ## [1.2.4](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.3...v1.2.4) (2026-03-02)
 
 
