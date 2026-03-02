@@ -1,3 +1,11 @@
+## [1.2.4](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.3...v1.2.4) (2026-03-02)
+
+
+### Bug Fixes
+
+* **ci:** fix broken YAML in Discord notification step ([2bac5e8](https://github.com/wyre-technology/connectwise-automate-mcp/commit/2bac5e8203a6e14f5878658814aebb87757a58db))
+* **deps:** upgrade semantic-release to ^25.0.0 for github plugin compatibility ([a5271e7](https://github.com/wyre-technology/connectwise-automate-mcp/commit/a5271e7ee6a820f0a6efb93c6bfb04f5b439a362))
+
 ## [1.2.3](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.2...v1.2.3) (2026-02-26)
 
 
