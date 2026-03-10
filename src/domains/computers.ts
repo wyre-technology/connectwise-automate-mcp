@@ -137,7 +137,7 @@ async function handleCall(
   switch (toolName) {
     case "cwautomate_computers_list": {
       let clientId = args.client_id as number | undefined;
-      let locationId = args.location_id as number | undefined;
+      const locationId = args.location_id as number | undefined;
       const status = args.status as "online" | "offline" | "all" | undefined;
       const limit = (args.limit as number) || 50;
       const skip = (args.skip as number) || 0;
