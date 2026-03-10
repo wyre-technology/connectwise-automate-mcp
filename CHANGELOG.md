@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.5...v1.3.0) (2026-03-10)
+
+
+### Features
+
+* **elicitation:** add MCP elicitation support with graceful fallback ([#1](https://github.com/wyre-technology/connectwise-automate-mcp/issues/1)) ([cefce30](https://github.com/wyre-technology/connectwise-automate-mcp/commit/cefce3069d6d1fdca9f4f5259a4ced05340e615e))
+
 ## [1.2.5](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.4...v1.2.5) (2026-03-02)
 
 
