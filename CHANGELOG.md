@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.3.0...v1.3.1) (2026-03-10)
+
+
+### Bug Fixes
+
+* **lint:** use const for locationId (never reassigned) ([6a23f80](https://github.com/wyre-technology/connectwise-automate-mcp/commit/6a23f8051d78837e0a5223d5e91f9f52307becb9))
+
 # [1.3.0](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.2.5...v1.3.0) (2026-03-10)
 
 
