@@ -7,16 +7,31 @@
  * 2. After user selects a domain, exposes domain-specific tools
  * 3. Lazy-loads domain handlers and the ConnectWise Automate client
  *
+ * Supports both stdio and HTTP transports:
+ * - stdio: Default, for local MCP clients
+ * - http: For gateway/hosted deployments (set MCP_TRANSPORT=http)
+ *
  * Credentials are provided via environment variables:
  * - CW_AUTOMATE_SERVER_URL
  * - CW_AUTOMATE_CLIENT_ID
  * - CW_AUTOMATE_USERNAME
  * - CW_AUTOMATE_PASSWORD
  * - CW_AUTOMATE_2FA_CODE (optional)
+ *
+ * In gateway mode (AUTH_MODE=gateway), credentials are extracted from HTTP headers:
+ * - X-CWA-Server -> CW_AUTOMATE_SERVER_URL
+ * - X-CWA-Client-ID -> CW_AUTOMATE_CLIENT_ID
+ * - X-CWA-Username -> CW_AUTOMATE_USERNAME
+ * - X-CWA-Password -> CW_AUTOMATE_PASSWORD
+ * - X-CWA-2FA -> CW_AUTOMATE_2FA_CODE (optional)
  */
 
+import { createServer, IncomingMessage, ServerResponse, Server as HttpServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -24,10 +39,14 @@ import {
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { getDomainHandler, getAvailableDomains } from "./domains/index.js";
 import { isDomainName, type DomainName } from "./utils/types.js";
-import { getCredentials } from "./utils/client.js";
+import { getCredentials, clearClient } from "./utils/client.js";
+import { setServerRef } from "./utils/server-ref.js";
 
 // Server state
 let currentDomain: DomainName | null = null;
+
+// HTTP server reference for graceful shutdown
+let httpServer: HttpServer | undefined;
 
 // Create the MCP server
 const server = new Server(
@@ -41,6 +60,8 @@ const server = new Server(
     },
   }
 );
+
+setServerRef(server);
 
 /**
  * Navigation tool - always available
@@ -235,8 +256,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// Start the server
-async function main() {
+/**
+ * Start the server with stdio transport (default)
+ */
+async function startStdioTransport(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
@@ -244,4 +267,137 @@ async function main() {
   );
 }
 
-main().catch(console.error);
+/**
+ * Start the server with HTTP Streamable transport
+ * Supports gateway mode where credentials come from request headers
+ */
+async function startHttpTransport(): Promise<void> {
+  const port = parseInt(process.env.MCP_HTTP_PORT || "8080", 10);
+  const host = process.env.MCP_HTTP_HOST || "0.0.0.0";
+  const isGatewayMode = process.env.AUTH_MODE === "gateway";
+
+  const httpTransport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+    enableJsonResponse: true,
+  });
+
+  httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+    // Health endpoint - no auth required
+    if (url.pathname === "/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          status: "ok",
+          transport: "http",
+          authMode: isGatewayMode ? "gateway" : "env",
+          timestamp: new Date().toISOString(),
+        })
+      );
+      return;
+    }
+
+    // MCP endpoint
+    if (url.pathname === "/mcp") {
+      // In gateway mode, extract credentials from headers
+      if (isGatewayMode) {
+        const headers = req.headers as Record<string, string | string[] | undefined>;
+        const cwaServer = headers["x-cwa-server"] as string | undefined;
+        const cwaClientId = headers["x-cwa-client-id"] as string | undefined;
+        const cwaUsername = headers["x-cwa-username"] as string | undefined;
+        const cwaPassword = headers["x-cwa-password"] as string | undefined;
+        const cwa2fa = headers["x-cwa-2fa"] as string | undefined;
+
+        if (!cwaServer || !cwaClientId || !cwaUsername || !cwaPassword) {
+          res.writeHead(401, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: "Missing credentials",
+              message:
+                "Gateway mode requires X-CWA-Server, X-CWA-Client-ID, X-CWA-Username, and X-CWA-Password headers",
+              required: [
+                "X-CWA-Server",
+                "X-CWA-Client-ID",
+                "X-CWA-Username",
+                "X-CWA-Password",
+              ],
+            })
+          );
+          return;
+        }
+
+        // Set process.env so getCredentials() picks them up
+        process.env.CW_AUTOMATE_SERVER_URL = cwaServer;
+        process.env.CW_AUTOMATE_CLIENT_ID = cwaClientId;
+        process.env.CW_AUTOMATE_USERNAME = cwaUsername;
+        process.env.CW_AUTOMATE_PASSWORD = cwaPassword;
+        if (cwa2fa) {
+          process.env.CW_AUTOMATE_2FA_CODE = cwa2fa;
+        }
+
+        // Invalidate cached client so new credentials take effect
+        clearClient();
+      }
+
+      httpTransport.handleRequest(req, res);
+      return;
+    }
+
+    // 404 for everything else
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Not found", endpoints: ["/mcp", "/health"] }));
+  });
+
+  await server.connect(httpTransport as unknown as Transport);
+
+  await new Promise<void>((resolve) => {
+    httpServer!.listen(port, host, () => {
+      console.error(
+        `ConnectWise Automate MCP server listening on http://${host}:${port}/mcp`
+      );
+      console.error(`Health check available at http://${host}:${port}/health`);
+      console.error(
+        `Authentication mode: ${isGatewayMode ? "gateway (header-based)" : "env (environment variables)"}`
+      );
+      resolve();
+    });
+  });
+}
+
+/**
+ * Gracefully stop the server
+ */
+async function shutdown(): Promise<void> {
+  console.error("Shutting down ConnectWise Automate MCP server...");
+  if (httpServer) {
+    await new Promise<void>((resolve, reject) => {
+      httpServer!.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
+  await server.close();
+  process.exit(0);
+}
+
+// Start the server
+async function main() {
+  const transportType = process.env.MCP_TRANSPORT || "stdio";
+
+  if (transportType === "http") {
+    await startHttpTransport();
+  } else {
+    await startStdioTransport();
+  }
+}
+
+// Graceful shutdown handlers
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
+main().catch((error) => {
+  console.error("Failed to start ConnectWise Automate MCP server:", error);
+  process.exit(1);
+});
+
+// Export for testing
+export { server, startHttpTransport, startStdioTransport };

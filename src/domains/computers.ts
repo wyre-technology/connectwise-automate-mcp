@@ -7,6 +7,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { DomainHandler, CallToolResult } from "../utils/types.js";
 import { getClient } from "../utils/client.js";
+import { elicitText } from "../utils/elicitation.js";
 
 /**
  * Get computer domain tools
@@ -135,12 +136,28 @@ async function handleCall(
 
   switch (toolName) {
     case "cwautomate_computers_list": {
+      let clientId = args.client_id as number | undefined;
+      let locationId = args.location_id as number | undefined;
+      const status = args.status as "online" | "offline" | "all" | undefined;
       const limit = (args.limit as number) || 50;
       const skip = (args.skip as number) || 0;
+
+      // If no filters provided, ask the user if they want to narrow by client or location
+      if (!clientId && !locationId && !status) {
+        const filterValue = await elicitText(
+          "Listing all computers can return a large result set. Would you like to filter by a client ID? Leave blank to list all.",
+          "client_id",
+          "Enter a client ID to filter by, or leave blank for all computers"
+        );
+        if (filterValue && !isNaN(Number(filterValue))) {
+          clientId = Number(filterValue);
+        }
+      }
+
       const response = await client.computers.list({
-        clientId: args.client_id as number | undefined,
-        locationId: args.location_id as number | undefined,
-        status: args.status as "online" | "offline" | "all" | undefined,
+        clientId,
+        locationId,
+        status,
         pageSize: limit,
         skip,
       });

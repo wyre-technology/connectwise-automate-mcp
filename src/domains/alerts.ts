@@ -7,6 +7,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { DomainHandler, CallToolResult } from "../utils/types.js";
 import { getClient } from "../utils/client.js";
+import { elicitSelection } from "../utils/elicitation.js";
 
 /**
  * Get alert domain tools
@@ -97,16 +98,38 @@ async function handleCall(
     case "cwautomate_alerts_list": {
       const limit = (args.limit as number) || 50;
       const skip = (args.skip as number) || 0;
+      let severity = args.severity as
+        | "critical"
+        | "warning"
+        | "informational"
+        | "all"
+        | undefined;
+      const computerId = args.computer_id as number | undefined;
+      const clientId = args.client_id as number | undefined;
+      const status = args.status as "active" | "acknowledged" | "all" | undefined;
+
+      // If no filters provided, ask the user if they want to filter by severity
+      if (!computerId && !clientId && !status && !severity) {
+        const selected = await elicitSelection(
+          "Listing all alerts can return many results. Would you like to filter by severity?",
+          "severity",
+          [
+            { value: "all", label: "All severities" },
+            { value: "critical", label: "Critical only" },
+            { value: "warning", label: "Warning only" },
+            { value: "informational", label: "Informational only" },
+          ]
+        );
+        if (selected && selected !== "all") {
+          severity = selected as "critical" | "warning" | "informational";
+        }
+      }
+
       const response = await client.alerts.list({
-        computerId: args.computer_id as number | undefined,
-        clientId: args.client_id as number | undefined,
-        status: args.status as "active" | "acknowledged" | "all" | undefined,
-        severity: args.severity as
-          | "critical"
-          | "warning"
-          | "informational"
-          | "all"
-          | undefined,
+        computerId,
+        clientId,
+        status,
+        severity,
         pageSize: limit,
         skip,
       });
