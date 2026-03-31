@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.3.1...v1.3.2) (2026-03-31)
+
+
+### Bug Fixes
+
+* **deploy:** replace node_compat with nodejs_compat for Wrangler v4 ([249f04b](https://github.com/wyre-technology/connectwise-automate-mcp/commit/249f04bfdb65606d8faf627111e575c6a225a97b))
+
 ## [1.3.1](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.3.0...v1.3.1) (2026-03-10)
 
 
