@@ -26,12 +26,10 @@
  * - X-CWA-2FA -> CW_AUTOMATE_2FA_CODE (optional)
  */
 
-import { createServer, IncomingMessage, ServerResponse, Server as HttpServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -41,27 +39,6 @@ import { getDomainHandler, getAvailableDomains } from "./domains/index.js";
 import { isDomainName, type DomainName } from "./utils/types.js";
 import { getCredentials, clearClient } from "./utils/client.js";
 import { setServerRef } from "./utils/server-ref.js";
-
-// Server state
-let currentDomain: DomainName | null = null;
-
-// HTTP server reference for graceful shutdown
-let httpServer: HttpServer | undefined;
-
-// Create the MCP server
-const server = new Server(
-  {
-    name: "connectwise-automate-mcp",
-    version: "1.0.0",
-  },
-  {
-    capabilities: {
-      tools: {},
-    },
-  }
-);
-
-setServerRef(server);
 
 /**
  * Navigation tool - always available
@@ -110,156 +87,175 @@ const statusTool: Tool = {
 };
 
 /**
- * Get tools based on current navigation state
+ * Create a fresh MCP server instance with all handlers registered.
+ * Called once for stdio, or per-request for HTTP transport.
  */
-async function getToolsForState(): Promise<Tool[]> {
-  // Always include status tool
-  const tools: Tool[] = [statusTool];
+function createMcpServer(): Server {
+  // Server state scoped to this instance
+  let currentDomain: DomainName | null = null;
 
-  if (currentDomain === null) {
-    // At the root - show navigation tool
-    tools.unshift(navigateTool);
-  } else {
-    // In a domain - show back tool and domain-specific tools
-    tools.unshift(backTool);
-
-    const handler = await getDomainHandler(currentDomain);
-    const domainTools = handler.getTools();
-    tools.push(...domainTools);
-  }
-
-  return tools;
-}
-
-// Handle ListTools requests
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  const tools = await getToolsForState();
-  return { tools };
-});
-
-// Handle CallTool requests
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-
-  try {
-    // Handle navigation
-    if (name === "cwautomate_navigate") {
-      const domain = (args as { domain: string }).domain;
-
-      if (!isDomainName(domain)) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Invalid domain: ${domain}. Available domains: ${getAvailableDomains().join(", ")}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      // Check credentials before navigating
-      const creds = getCredentials();
-      if (!creds) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: No API credentials configured. Please set CW_AUTOMATE_SERVER_URL, CW_AUTOMATE_CLIENT_ID, CW_AUTOMATE_USERNAME, and CW_AUTOMATE_PASSWORD environment variables.",
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      currentDomain = domain;
-
-      // Get tools for the new domain
-      const handler = await getDomainHandler(domain);
-      const domainTools = handler.getTools();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Navigated to ${domain} domain.\n\nAvailable tools:\n${domainTools
-              .map((t) => `- ${t.name}: ${t.description}`)
-              .join("\n")}\n\nUse cwautomate_back to return to the main menu.`,
-          },
-        ],
-      };
+  const server = new Server(
+    {
+      name: "connectwise-automate-mcp",
+      version: "1.0.0",
+    },
+    {
+      capabilities: {
+        tools: {},
+      },
     }
+  );
 
-    // Handle back navigation
-    if (name === "cwautomate_back") {
-      const previousDomain = currentDomain;
-      currentDomain = null;
+  setServerRef(server);
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Navigated back from ${previousDomain || "root"} to the main menu.\n\nAvailable domains: ${getAvailableDomains().join(", ")}\n\nUse cwautomate_navigate to select a domain.`,
-          },
-        ],
-      };
-    }
+  /**
+   * Get tools based on current navigation state
+   */
+  async function getToolsForState(): Promise<Tool[]> {
+    const tools: Tool[] = [statusTool];
 
-    // Handle status
-    if (name === "cwautomate_status") {
-      const creds = getCredentials();
-      const credStatus = creds
-        ? `Configured (server: ${creds.serverUrl})`
-        : "NOT CONFIGURED - Please set environment variables";
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `ConnectWise Automate MCP Server Status\n\nCurrent domain: ${currentDomain || "(none - at main menu)"}\nCredentials: ${credStatus}\nAvailable domains: ${getAvailableDomains().join(", ")}`,
-          },
-        ],
-      };
-    }
-
-    // Handle domain-specific tools
-    if (currentDomain !== null) {
+    if (currentDomain === null) {
+      tools.unshift(navigateTool);
+    } else {
+      tools.unshift(backTool);
       const handler = await getDomainHandler(currentDomain);
-
-      // Check if the tool belongs to this domain
       const domainTools = handler.getTools();
-      const toolExists = domainTools.some((t) => t.name === name);
-
-      if (toolExists) {
-        return await handler.handleCall(name, args as Record<string, unknown>);
-      }
+      tools.push(...domainTools);
     }
 
-    // Tool not found
-    return {
-      content: [
-        {
-          type: "text",
-          text: currentDomain
-            ? `Unknown tool: ${name}. You are currently in the ${currentDomain} domain. Use cwautomate_back to return to the main menu.`
-            : `Unknown tool: ${name}. Use cwautomate_navigate to select a domain first.`,
-        },
-      ],
-      isError: true,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      content: [{ type: "text", text: `Error: ${message}` }],
-      isError: true,
-    };
+    return tools;
   }
-});
+
+  // Handle ListTools requests
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const tools = await getToolsForState();
+    return { tools };
+  });
+
+  // Handle CallTool requests
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+
+    try {
+      // Handle navigation
+      if (name === "cwautomate_navigate") {
+        const domain = (args as { domain: string }).domain;
+
+        if (!isDomainName(domain)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Invalid domain: ${domain}. Available domains: ${getAvailableDomains().join(", ")}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        // Check credentials before navigating
+        const creds = getCredentials();
+        if (!creds) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Error: No API credentials configured. Please set CW_AUTOMATE_SERVER_URL, CW_AUTOMATE_CLIENT_ID, CW_AUTOMATE_USERNAME, and CW_AUTOMATE_PASSWORD environment variables.",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        currentDomain = domain;
+
+        const handler = await getDomainHandler(domain);
+        const domainTools = handler.getTools();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Navigated to ${domain} domain.\n\nAvailable tools:\n${domainTools
+                .map((t) => `- ${t.name}: ${t.description}`)
+                .join("\n")}\n\nUse cwautomate_back to return to the main menu.`,
+            },
+          ],
+        };
+      }
+
+      // Handle back navigation
+      if (name === "cwautomate_back") {
+        const previousDomain = currentDomain;
+        currentDomain = null;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Navigated back from ${previousDomain || "root"} to the main menu.\n\nAvailable domains: ${getAvailableDomains().join(", ")}\n\nUse cwautomate_navigate to select a domain.`,
+            },
+          ],
+        };
+      }
+
+      // Handle status
+      if (name === "cwautomate_status") {
+        const creds = getCredentials();
+        const credStatus = creds
+          ? `Configured (server: ${creds.serverUrl})`
+          : "NOT CONFIGURED - Please set environment variables";
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `ConnectWise Automate MCP Server Status\n\nCurrent domain: ${currentDomain || "(none - at main menu)"}\nCredentials: ${credStatus}\nAvailable domains: ${getAvailableDomains().join(", ")}`,
+            },
+          ],
+        };
+      }
+
+      // Handle domain-specific tools
+      if (currentDomain !== null) {
+        const handler = await getDomainHandler(currentDomain);
+        const domainTools = handler.getTools();
+        const toolExists = domainTools.some((t) => t.name === name);
+
+        if (toolExists) {
+          return await handler.handleCall(name, args as Record<string, unknown>);
+        }
+      }
+
+      // Tool not found
+      return {
+        content: [
+          {
+            type: "text",
+            text: currentDomain
+              ? `Unknown tool: ${name}. You are currently in the ${currentDomain} domain. Use cwautomate_back to return to the main menu.`
+              : `Unknown tool: ${name}. Use cwautomate_navigate to select a domain first.`,
+          },
+        ],
+        isError: true,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{ type: "text", text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  });
+
+  return server;
+}
 
 /**
  * Start the server with stdio transport (default)
  */
 async function startStdioTransport(): Promise<void> {
+  const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
@@ -268,20 +264,15 @@ async function startStdioTransport(): Promise<void> {
 }
 
 /**
- * Start the server with HTTP Streamable transport
- * Supports gateway mode where credentials come from request headers
+ * Start the server with HTTP Streamable transport.
+ * Each request gets a fresh Server + Transport (stateless).
  */
 async function startHttpTransport(): Promise<void> {
   const port = parseInt(process.env.MCP_HTTP_PORT || "8080", 10);
   const host = process.env.MCP_HTTP_HOST || "0.0.0.0";
   const isGatewayMode = process.env.AUTH_MODE === "gateway";
 
-  const httpTransport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-    enableJsonResponse: true,
-  });
-
-  httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+  const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
     // Health endpoint - no auth required
@@ -327,7 +318,6 @@ async function startHttpTransport(): Promise<void> {
           return;
         }
 
-        // Set process.env so getCredentials() picks them up
         process.env.CW_AUTOMATE_SERVER_URL = cwaServer;
         process.env.CW_AUTOMATE_CLIENT_ID = cwaClientId;
         process.env.CW_AUTOMATE_USERNAME = cwaUsername;
@@ -336,11 +326,24 @@ async function startHttpTransport(): Promise<void> {
           process.env.CW_AUTOMATE_2FA_CODE = cwa2fa;
         }
 
-        // Invalidate cached client so new credentials take effect
         clearClient();
       }
 
-      httpTransport.handleRequest(req, res);
+      // Create fresh server + transport per request (stateless)
+      const server = createMcpServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      });
+
+      res.on("close", () => {
+        transport.close();
+        server.close();
+      });
+
+      server.connect(transport).then(() => {
+        transport.handleRequest(req, res);
+      });
       return;
     }
 
@@ -349,10 +352,8 @@ async function startHttpTransport(): Promise<void> {
     res.end(JSON.stringify({ error: "Not found", endpoints: ["/mcp", "/health"] }));
   });
 
-  await server.connect(httpTransport as unknown as Transport);
-
   await new Promise<void>((resolve) => {
-    httpServer!.listen(port, host, () => {
+    httpServer.listen(port, host, () => {
       console.error(
         `ConnectWise Automate MCP server listening on http://${host}:${port}/mcp`
       );
@@ -363,20 +364,18 @@ async function startHttpTransport(): Promise<void> {
       resolve();
     });
   });
-}
 
-/**
- * Gracefully stop the server
- */
-async function shutdown(): Promise<void> {
-  console.error("Shutting down ConnectWise Automate MCP server...");
-  if (httpServer) {
+  // Graceful shutdown
+  const shutdown = async () => {
+    console.error("Shutting down ConnectWise Automate MCP server...");
     await new Promise<void>((resolve, reject) => {
-      httpServer!.close((err) => (err ? reject(err) : resolve()));
+      httpServer.close((err) => (err ? reject(err) : resolve()));
     });
-  }
-  await server.close();
-  process.exit(0);
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
 // Start the server
@@ -390,14 +389,10 @@ async function main() {
   }
 }
 
-// Graceful shutdown handlers
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
-
 main().catch((error) => {
   console.error("Failed to start ConnectWise Automate MCP server:", error);
   process.exit(1);
 });
 
 // Export for testing
-export { server, startHttpTransport, startStdioTransport };
+export { createMcpServer, startHttpTransport, startStdioTransport };
