@@ -1,3 +1,10 @@
+## [1.3.3](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.3.2...v1.3.3) (2026-04-06)
+
+
+### Bug Fixes
+
+* per-request MCP Server+Transport for gateway compatibility ([3a16ac3](https://github.com/wyre-technology/connectwise-automate-mcp/commit/3a16ac3a5edad2d5e58a3db69c6c3d8ca570887d))
+
 ## [1.3.2](https://github.com/wyre-technology/connectwise-automate-mcp/compare/v1.3.1...v1.3.2) (2026-03-31)
 
 
