@@ -128,6 +128,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- HTTP Streamable transport mode (`MCP_TRANSPORT=http`) on configurable port/host
+- Gateway credential injection via `X-CWA-Server`, `X-CWA-Client-ID`, `X-CWA-Username`, `X-CWA-Password` headers
+- Per-request credential isolation (no process.env mutation) for multi-tenant gateway deployments
+- `/health` endpoint for container health checks
+- `createClientDirect()`, `setClientOverride()`, `clearClientOverride()` in client utility
+- Graceful shutdown on SIGINT/SIGTERM for HTTP transport
+- Unhandled rejection and uncaught exception handlers
 - Initial release of ConnectWise Automate MCP server
 - Decision tree architecture with domain navigation
 - Computers domain with list, get, search, reboot, and run script tools

@@ -7,23 +7,16 @@
  * 2. After user selects a domain, exposes domain-specific tools
  * 3. Lazy-loads domain handlers and the ConnectWise Automate client
  *
- * Supports both stdio and HTTP transports:
- * - stdio: Default, for local MCP clients
- * - http: For gateway/hosted deployments (set MCP_TRANSPORT=http)
+ * Supports both stdio and HTTP (StreamableHTTP) transports.
+ * - stdio: credentials via environment variables
+ * - HTTP: credentials via env vars (AUTH_MODE=env) or per-request headers (AUTH_MODE=gateway)
  *
- * Credentials are provided via environment variables:
- * - CW_AUTOMATE_SERVER_URL
- * - CW_AUTOMATE_CLIENT_ID
- * - CW_AUTOMATE_USERNAME
- * - CW_AUTOMATE_PASSWORD
- * - CW_AUTOMATE_2FA_CODE (optional)
- *
- * In gateway mode (AUTH_MODE=gateway), credentials are extracted from HTTP headers:
- * - X-CWA-Server -> CW_AUTOMATE_SERVER_URL
- * - X-CWA-Client-ID -> CW_AUTOMATE_CLIENT_ID
- * - X-CWA-Username -> CW_AUTOMATE_USERNAME
- * - X-CWA-Password -> CW_AUTOMATE_PASSWORD
- * - X-CWA-2FA -> CW_AUTOMATE_2FA_CODE (optional)
+ * Gateway header mapping (from vendor-config.ts):
+ *   X-CWA-Server    -> serverUrl
+ *   X-CWA-Client-ID -> clientId
+ *   X-CWA-Username  -> username
+ *   X-CWA-Password  -> password
+ *   X-CWA-2FA       -> twoFactorCode (optional)
  */
 
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
@@ -37,7 +30,14 @@ import {
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { getDomainHandler, getAvailableDomains } from "./domains/index.js";
 import { isDomainName, type DomainName } from "./utils/types.js";
-import { getCredentials, clearClient } from "./utils/client.js";
+import {
+  getCredentials,
+  hasCredentials,
+  createClientDirect,
+  setClientOverride,
+  clearClientOverride,
+  type CWAutomateCredentials,
+} from "./utils/client.js";
 import { setServerRef } from "./utils/server-ref.js";
 
 /**
@@ -89,8 +89,12 @@ const statusTool: Tool = {
 /**
  * Create a fresh MCP server instance with all handlers registered.
  * Called once for stdio, or per-request for HTTP transport.
+ *
+ * @param credentialOverrides - Optional credentials for gateway mode.
+ *   When provided, a per-request client is created from these credentials
+ *   instead of reading from process.env.
  */
-function createMcpServer(): Server {
+function createMcpServer(credentialOverrides?: CWAutomateCredentials): Server {
   // Server state scoped to this instance
   let currentDomain: DomainName | null = null;
 
@@ -136,6 +140,13 @@ function createMcpServer(): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
+    // If per-request credentials were provided, create an isolated client
+    // and set it as the override so all domain handlers pick it up via getClient().
+    if (credentialOverrides) {
+      const directClient = await createClientDirect(credentialOverrides);
+      setClientOverride(directClient);
+    }
+
     try {
       // Handle navigation
       if (name === "cwautomate_navigate") {
@@ -154,8 +165,7 @@ function createMcpServer(): Server {
         }
 
         // Check credentials before navigating
-        const creds = getCredentials();
-        if (!creds) {
+        if (!hasCredentials(credentialOverrides)) {
           return {
             content: [
               {
@@ -169,6 +179,7 @@ function createMcpServer(): Server {
 
         currentDomain = domain;
 
+        // Get tools for the new domain
         const handler = await getDomainHandler(domain);
         const domainTools = handler.getTools();
 
@@ -201,9 +212,12 @@ function createMcpServer(): Server {
 
       // Handle status
       if (name === "cwautomate_status") {
-        const creds = getCredentials();
-        const credStatus = creds
-          ? `Configured (server: ${creds.serverUrl})`
+        const hasCreds = hasCredentials(credentialOverrides);
+        const envCreds = getCredentials();
+        const credStatus = hasCreds
+          ? credentialOverrides
+            ? `Configured (gateway mode, server: ${credentialOverrides.serverUrl})`
+            : `Configured (server: ${envCreds?.serverUrl})`
           : "NOT CONFIGURED - Please set environment variables";
 
         return {
@@ -245,6 +259,10 @@ function createMcpServer(): Server {
         content: [{ type: "text", text: `Error: ${message}` }],
         isError: true,
       };
+    } finally {
+      if (credentialOverrides) {
+        clearClientOverride();
+      }
     }
   });
 
@@ -265,99 +283,116 @@ async function startStdioTransport(): Promise<void> {
 
 /**
  * Start the server with HTTP Streamable transport.
- * Each request gets a fresh Server + Transport (stateless).
+ * In gateway mode, credentials are extracted from request headers on each request.
+ * No process.env mutation -- each request gets its own isolated client.
  */
 async function startHttpTransport(): Promise<void> {
   const port = parseInt(process.env.MCP_HTTP_PORT || "8080", 10);
   const host = process.env.MCP_HTTP_HOST || "0.0.0.0";
   const isGatewayMode = process.env.AUTH_MODE === "gateway";
 
-  const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-
-    // Health endpoint - no auth required
-    if (url.pathname === "/health") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          status: "ok",
-          transport: "http",
-          authMode: isGatewayMode ? "gateway" : "env",
-          timestamp: new Date().toISOString(),
-        })
+  const httpServer = createServer(
+    (req: IncomingMessage, res: ServerResponse) => {
+      const url = new URL(
+        req.url || "/",
+        `http://${req.headers.host || "localhost"}`
       );
-      return;
-    }
 
-    // MCP endpoint
-    if (url.pathname === "/mcp") {
-      // In gateway mode, extract credentials from headers
-      if (isGatewayMode) {
-        const headers = req.headers as Record<string, string | string[] | undefined>;
-        const cwaServer = headers["x-cwa-server"] as string | undefined;
-        const cwaClientId = headers["x-cwa-client-id"] as string | undefined;
-        const cwaUsername = headers["x-cwa-username"] as string | undefined;
-        const cwaPassword = headers["x-cwa-password"] as string | undefined;
-        const cwa2fa = headers["x-cwa-2fa"] as string | undefined;
-
-        if (!cwaServer || !cwaClientId || !cwaUsername || !cwaPassword) {
-          res.writeHead(401, { "Content-Type": "application/json" });
-          res.end(
-            JSON.stringify({
-              error: "Missing credentials",
-              message:
-                "Gateway mode requires X-CWA-Server, X-CWA-Client-ID, X-CWA-Username, and X-CWA-Password headers",
-              required: [
-                "X-CWA-Server",
-                "X-CWA-Client-ID",
-                "X-CWA-Username",
-                "X-CWA-Password",
-              ],
-            })
-          );
-          return;
-        }
-
-        process.env.CW_AUTOMATE_SERVER_URL = cwaServer;
-        process.env.CW_AUTOMATE_CLIENT_ID = cwaClientId;
-        process.env.CW_AUTOMATE_USERNAME = cwaUsername;
-        process.env.CW_AUTOMATE_PASSWORD = cwaPassword;
-        if (cwa2fa) {
-          process.env.CW_AUTOMATE_2FA_CODE = cwa2fa;
-        }
-
-        clearClient();
+      // Health endpoint - no auth required
+      if (url.pathname === "/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            status: "ok",
+            transport: "http",
+            authMode: isGatewayMode ? "gateway" : "env",
+            timestamp: new Date().toISOString(),
+          })
+        );
+        return;
       }
 
-      // Create fresh server + transport per request (stateless)
-      const server = createMcpServer();
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-        enableJsonResponse: true,
-      });
+      // MCP endpoint -- create a new Server + Transport per request so that
+      // each initialize handshake gets a fresh server (the MCP SDK rejects
+      // initialize on an already-initialized server).
+      if (url.pathname === "/mcp") {
+        console.error(
+          `[MCP] ${req.method} /mcp from ${req.headers["x-forwarded-for"] || req.socket.remoteAddress}` +
+            ` hasServer=${!!req.headers["x-cwa-server"]}` +
+            ` hasClientId=${!!req.headers["x-cwa-client-id"]}`
+        );
 
-      res.on("close", () => {
-        transport.close();
-        server.close();
-      });
+        // In gateway mode, extract per-request credentials from headers
+        // and pass them directly to createMcpServer() for isolation.
+        // No process.env mutation -- each request gets its own client.
+        let credentialOverrides: CWAutomateCredentials | undefined;
+        if (isGatewayMode) {
+          const serverUrl = req.headers["x-cwa-server"] as string | undefined;
+          const clientId = req.headers["x-cwa-client-id"] as string | undefined;
+          const username = req.headers["x-cwa-username"] as string | undefined;
+          const password = req.headers["x-cwa-password"] as string | undefined;
+          const twoFactorCode = req.headers["x-cwa-2fa"] as string | undefined;
 
-      server.connect(transport).then(() => {
-        transport.handleRequest(req, res);
-      });
-      return;
+          if (serverUrl && clientId && username && password) {
+            credentialOverrides = { serverUrl, clientId, username, password };
+            if (twoFactorCode) {
+              credentialOverrides.twoFactorCode = twoFactorCode;
+            }
+          }
+        }
+
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined,
+          enableJsonResponse: true,
+        });
+
+        const server = createMcpServer(credentialOverrides);
+
+        res.on("close", () => {
+          transport.close();
+          server.close();
+        });
+
+        server
+          .connect(transport)
+          .then(() => {
+            transport.handleRequest(req, res);
+          })
+          .catch((err) => {
+            console.error("[MCP] transport error:", err);
+            if (!res.headersSent) {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({
+                  jsonrpc: "2.0",
+                  error: { code: -32603, message: "Internal error" },
+                  id: null,
+                })
+              );
+            }
+          });
+        return;
+      }
+
+      // 404 for everything else
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: "Not found",
+          endpoints: ["/mcp", "/health"],
+        })
+      );
     }
-
-    // 404 for everything else
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Not found", endpoints: ["/mcp", "/health"] }));
-  });
+  );
 
   await new Promise<void>((resolve) => {
     httpServer.listen(port, host, () => {
       console.error(
         `ConnectWise Automate MCP server listening on http://${host}:${port}/mcp`
       );
-      console.error(`Health check available at http://${host}:${port}/health`);
+      console.error(
+        `Health check available at http://${host}:${port}/health`
+      );
       console.error(
         `Authentication mode: ${isGatewayMode ? "gateway (header-based)" : "env (environment variables)"}`
       );
