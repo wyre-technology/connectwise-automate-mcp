@@ -25,4 +25,5 @@ ENV MCP_TRANSPORT=http
 ENV MCP_HTTP_PORT=8080
 ENV MCP_HTTP_HOST=0.0.0.0
 ENV AUTH_MODE=env
+LABEL io.modelcontextprotocol.server.name="io.github.wyre-technology/connectwise-automate-mcp"
 CMD ["node", "dist/index.js"]
