@@ -1,5 +1,5 @@
 /**
- * Tests for navigation and domain state management
+ * Tests for navigation and domain discovery (stateless)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

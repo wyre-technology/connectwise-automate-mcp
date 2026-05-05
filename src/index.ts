@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * ConnectWise Automate MCP Server with Decision Tree Architecture
+ * ConnectWise Automate MCP Server
  *
- * This MCP server uses a hierarchical tool loading approach:
- * 1. Initially exposes only a navigation tool
- * 2. After user selects a domain, exposes domain-specific tools
- * 3. Lazy-loads domain handlers and the ConnectWise Automate client
+ * This MCP server provides tools for interacting with the ConnectWise Automate API.
+ * All tools are listed upfront so they work with every MCP client, including
+ * remote connectors (claude.ai, mcp-remote) that do not support dynamic
+ * tool-list changes. A helper `cwautomate_navigate` tool provides domain
+ * discovery and guidance.
  *
  * Supports both stdio and HTTP (StreamableHTTP) transports.
  * - stdio: credentials via environment variables
@@ -41,20 +42,38 @@ import {
 import { setServerRef } from "./utils/server-ref.js";
 
 /**
- * Navigation tool - always available
+ * Domain metadata for navigation
+ */
+const domainDescriptions: Record<DomainName, string> = {
+  computers: "Endpoint management - list, get, manage computers and devices in ConnectWise Automate",
+  clients: "Company management - list and get client/company information and relationships",
+  alerts: "Alert monitoring - view and acknowledge system alerts and notifications",
+  scripts: "Script management - list, get, and execute automation scripts (DESTRUCTIVE operations available)",
+};
+
+/**
+ * Navigation / discovery tool - helps the LLM find the right tools
+ *
+ * This is a stateless helper that describes available tools for a domain.
+ * All domain tools are always listed in tools/list regardless of navigation
+ * state, because many MCP clients (claude.ai connectors, mcp-remote) only
+ * fetch the tool list once and do not support notifications/tools/list_changed.
  */
 const navigateTool: Tool = {
   name: "cwautomate_navigate",
   description:
-    "Navigate to a ConnectWise Automate domain to access its tools. Available domains: computers (manage endpoints), clients (manage companies), alerts (view and acknowledge alerts), scripts (manage and execute scripts).",
+    "Discover available ConnectWise Automate tools by domain. Returns tool names and descriptions for the selected domain. All tools are callable at any time — this is a help/discovery aid, not a prerequisite.",
   inputSchema: {
     type: "object",
     properties: {
       domain: {
         type: "string",
         enum: getAvailableDomains(),
-        description:
-          "The domain to navigate to. Choose: computers, clients, alerts, or scripts",
+        description: `The domain to explore:
+- computers: ${domainDescriptions.computers}
+- clients: ${domainDescriptions.clients}
+- alerts: ${domainDescriptions.alerts}
+- scripts: ${domainDescriptions.scripts}`,
       },
     },
     required: ["domain"],
@@ -62,11 +81,11 @@ const navigateTool: Tool = {
 };
 
 /**
- * Back navigation tool - available when in a domain
+ * Status tool - shows credentials status and available domains
  */
-const backTool: Tool = {
-  name: "cwautomate_back",
-  description: "Navigate back to the main menu to select a different domain",
+const statusTool: Tool = {
+  name: "cwautomate_status",
+  description: "Show credentials status and available domains",
   inputSchema: {
     type: "object",
     properties: {},
@@ -74,17 +93,38 @@ const backTool: Tool = {
 };
 
 /**
- * Status tool - shows current navigation state
+ * Map from domain name to its tool definitions (loaded lazily)
  */
-const statusTool: Tool = {
-  name: "cwautomate_status",
-  description:
-    "Show current navigation state and available domains. Also verifies API credentials are configured.",
-  inputSchema: {
-    type: "object",
-    properties: {},
-  },
-};
+const domainToolMap = new Map<DomainName, Tool[]>();
+
+/**
+ * All domain tools, collected once at startup
+ */
+let allDomainTools: Tool[] | null = null;
+
+/**
+ * Load all domain tools (lazy-loaded on first access)
+ */
+async function getAllDomainTools(): Promise<Tool[]> {
+  if (allDomainTools !== null) {
+    return allDomainTools;
+  }
+
+  const domains = getAvailableDomains();
+  const tools: Tool[] = [];
+
+  for (const domain of domains) {
+    if (!domainToolMap.has(domain)) {
+      const handler = await getDomainHandler(domain);
+      const domainTools = handler.getTools();
+      domainToolMap.set(domain, domainTools);
+    }
+    tools.push(...domainToolMap.get(domain)!);
+  }
+
+  allDomainTools = tools;
+  return tools;
+}
 
 /**
  * Create a fresh MCP server instance with all handlers registered.
@@ -95,9 +135,6 @@ const statusTool: Tool = {
  *   instead of reading from process.env.
  */
 function createMcpServer(credentialOverrides?: CWAutomateCredentials): Server {
-  // Server state scoped to this instance
-  let currentDomain: DomainName | null = null;
-
   const server = new Server(
     {
       name: "connectwise-automate-mcp",
@@ -113,30 +150,16 @@ function createMcpServer(credentialOverrides?: CWAutomateCredentials): Server {
   setServerRef(server);
 
   /**
-   * Get tools based on current navigation state
+   * Handle ListTools requests - always returns ALL tools
    */
-  async function getToolsForState(): Promise<Tool[]> {
-    const tools: Tool[] = [statusTool];
-
-    if (currentDomain === null) {
-      tools.unshift(navigateTool);
-    } else {
-      tools.unshift(backTool);
-      const handler = await getDomainHandler(currentDomain);
-      const domainTools = handler.getTools();
-      tools.push(...domainTools);
-    }
-
-    return tools;
-  }
-
-  // Handle ListTools requests
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = await getToolsForState();
-    return { tools };
+    const domainTools = await getAllDomainTools();
+    return { tools: [navigateTool, statusTool, ...domainTools] };
   });
 
-  // Handle CallTool requests
+  /**
+   * Handle CallTool requests
+   */
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
@@ -148,9 +171,9 @@ function createMcpServer(credentialOverrides?: CWAutomateCredentials): Server {
     }
 
     try {
-      // Handle navigation
+      // Handle navigation / discovery helper
       if (name === "cwautomate_navigate") {
-        const domain = (args as { domain: string }).domain;
+        const { domain } = args as { domain: DomainName };
 
         if (!isDomainName(domain)) {
           return {
@@ -164,53 +187,23 @@ function createMcpServer(credentialOverrides?: CWAutomateCredentials): Server {
           };
         }
 
-        // Check credentials before navigating
-        if (!hasCredentials(credentialOverrides)) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: "Error: No API credentials configured. Please set CW_AUTOMATE_SERVER_URL, CW_AUTOMATE_CLIENT_ID, CW_AUTOMATE_USERNAME, and CW_AUTOMATE_PASSWORD environment variables.",
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        currentDomain = domain;
-
-        // Get tools for the new domain
         const handler = await getDomainHandler(domain);
-        const domainTools = handler.getTools();
+        const tools = handler.getTools();
+
+        const toolSummary = tools
+          .map((t) => `- ${t.name}: ${t.description}`)
+          .join("\n");
 
         return {
           content: [
             {
               type: "text",
-              text: `Navigated to ${domain} domain.\n\nAvailable tools:\n${domainTools
-                .map((t) => `- ${t.name}: ${t.description}`)
-                .join("\n")}\n\nUse cwautomate_back to return to the main menu.`,
+              text: `${domainDescriptions[domain]}\n\nAvailable tools:\n${toolSummary}\n\nYou can call any of these tools directly.`,
             },
           ],
         };
       }
 
-      // Handle back navigation
-      if (name === "cwautomate_back") {
-        const previousDomain = currentDomain;
-        currentDomain = null;
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Navigated back from ${previousDomain || "root"} to the main menu.\n\nAvailable domains: ${getAvailableDomains().join(", ")}\n\nUse cwautomate_navigate to select a domain.`,
-            },
-          ],
-        };
-      }
-
-      // Handle status
       if (name === "cwautomate_status") {
         const hasCreds = hasCredentials(credentialOverrides);
         const envCreds = getCredentials();
@@ -224,31 +217,38 @@ function createMcpServer(credentialOverrides?: CWAutomateCredentials): Server {
           content: [
             {
               type: "text",
-              text: `ConnectWise Automate MCP Server Status\n\nCurrent domain: ${currentDomain || "(none - at main menu)"}\nCredentials: ${credStatus}\nAvailable domains: ${getAvailableDomains().join(", ")}`,
+              text: `ConnectWise Automate MCP Server Status\n\nCredentials: ${credStatus}\nAvailable domains: ${getAvailableDomains().join(", ")}\n\nAll tools are available at all times. Use cwautomate_navigate to discover tools by domain.`,
             },
           ],
         };
       }
 
-      // Handle domain-specific tools
-      if (currentDomain !== null) {
-        const handler = await getDomainHandler(currentDomain);
-        const domainTools = handler.getTools();
-        const toolExists = domainTools.some((t) => t.name === name);
+      // Route to appropriate domain handler
+      const toolArgs = (args ?? {}) as Record<string, unknown>;
 
-        if (toolExists) {
-          return await handler.handleCall(name, args as Record<string, unknown>);
-        }
+      if (name.startsWith("cwautomate_computers_")) {
+        const handler = await getDomainHandler("computers");
+        return await handler.handleCall(name, toolArgs);
+      }
+      if (name.startsWith("cwautomate_clients_")) {
+        const handler = await getDomainHandler("clients");
+        return await handler.handleCall(name, toolArgs);
+      }
+      if (name.startsWith("cwautomate_alerts_")) {
+        const handler = await getDomainHandler("alerts");
+        return await handler.handleCall(name, toolArgs);
+      }
+      if (name.startsWith("cwautomate_scripts_")) {
+        const handler = await getDomainHandler("scripts");
+        return await handler.handleCall(name, toolArgs);
       }
 
-      // Tool not found
+      // Unknown tool
       return {
         content: [
           {
             type: "text",
-            text: currentDomain
-              ? `Unknown tool: ${name}. You are currently in the ${currentDomain} domain. Use cwautomate_back to return to the main menu.`
-              : `Unknown tool: ${name}. Use cwautomate_navigate to select a domain first.`,
+            text: `Unknown tool: ${name}. Use cwautomate_navigate to discover available tools by domain.`,
           },
         ],
         isError: true,
@@ -277,7 +277,7 @@ async function startStdioTransport(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    "ConnectWise Automate MCP server running on stdio (decision tree mode)"
+    "ConnectWise Automate MCP server running on stdio"
   );
 }
 
