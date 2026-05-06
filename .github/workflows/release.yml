@@ -38,6 +38,9 @@ jobs:
       contents: write
       issues: write
       packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      released: ${{ steps.version.outputs.released }}
     steps:
       - uses: actions/checkout@v4
         with:
