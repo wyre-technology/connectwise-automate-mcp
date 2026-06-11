@@ -89,9 +89,11 @@ export async function getClient(): Promise<ConnectWiseAutomateClient> {
     _client = new ConnectWiseAutomateClient({
       serverUrl: creds.serverUrl,
       clientId: creds.clientId,
-      username: creds.username,
-      password: creds.password,
-      twoFactorCode: creds.twoFactorCode,
+      credentials: {
+        method: "integrator",
+        integratorUsername: creds.username,
+        integratorPassword: creds.password,
+      },
     });
     _credentials = creds;
   }
@@ -112,9 +114,11 @@ export async function createClientDirect(
   return new ConnectWiseAutomateClient({
     serverUrl: creds.serverUrl,
     clientId: creds.clientId,
-    username: creds.username,
-    password: creds.password,
-    twoFactorCode: creds.twoFactorCode,
+    credentials: {
+      method: "integrator",
+      integratorUsername: creds.username,
+      integratorPassword: creds.password,
+    },
   });
 }
 
