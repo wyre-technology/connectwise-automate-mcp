@@ -10,6 +10,16 @@
   for Cloudflare Workers). The `.npmrc` reads the token and `.do/deploy.template.yaml`
   declares the build-time secret. Part of the fleet-wide fix mirroring
   wyre-technology/ninjaone-mcp#35.
+- **CI (`mcp-assert`):** added an in-process regression guard
+  (`src/__tests__/mcp-assert-contract.test.ts`) that pins the same baseline
+  contract the `mcp-assert` check enforces — the `cwautomate_scripts_list`
+  canary is registered upfront and returns `isError` without credentials, and
+  unknown tools return `isError`. The check went red once on 2026-06-05 from a
+  transient upstream failure downloading the `mcp-assert` binary (HTTP 403),
+  not a code defect; both assertions pass on `main`. This test makes the
+  contract enforceable by `npm test` so a real source regression (e.g.
+  re-introducing an HTTP transport default or gating the canary behind
+  navigation) is caught locally instead of only by the external check.
 
 ### Changed
 
