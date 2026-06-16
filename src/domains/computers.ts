@@ -5,9 +5,19 @@
  */
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { ComputerListParams } from "@wyre-technology/node-connectwise-automate";
 import type { DomainHandler, CallToolResult } from "../utils/types.js";
 import { getClient } from "../utils/client.js";
 import { elicitText } from "../utils/elicitation.js";
+import { toPage } from "../utils/pagination.js";
+import { jsonResult, listResult } from "../utils/results.js";
+
+/**
+ * Escape single quotes for an OData-style condition string value.
+ */
+function escapeConditionValue(value: string): string {
+  return value.replace(/'/g, "''");
+}
 
 /**
  * Get computer domain tools
@@ -17,7 +27,7 @@ function getTools(): Tool[] {
     {
       name: "cwautomate_computers_list",
       description:
-        "List computers in ConnectWise Automate. Can filter by client, location, or status.",
+        "List computers in ConnectWise Automate. Can filter by client, location, or online status.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -36,7 +46,7 @@ function getTools(): Tool[] {
           },
           limit: {
             type: "number",
-            description: "Maximum number of results (default: 50)",
+            description: "Maximum number of results per page (default: 50)",
           },
           skip: {
             type: "number",
@@ -61,13 +71,13 @@ function getTools(): Tool[] {
     },
     {
       name: "cwautomate_computers_search",
-      description: "Search for computers by name, MAC address, or other criteria",
+      description: "Search for computers by name (matches any part of the computer name)",
       inputSchema: {
         type: "object" as const,
         properties: {
           query: {
             type: "string",
-            description: "Search query (computer name, MAC address, etc.)",
+            description: "Search query matched against the computer name",
           },
           client_id: {
             type: "number",
@@ -83,7 +93,7 @@ function getTools(): Tool[] {
     },
     {
       name: "cwautomate_computers_reboot",
-      description: "Send a reboot command to a computer",
+      description: "Send a restart command to a computer",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -154,113 +164,74 @@ async function handleCall(
         }
       }
 
-      const response = await client.computers.list({
+      const params: ComputerListParams = {
         clientId,
         locationId,
-        status,
         pageSize: limit,
-        skip,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                total: response.total,
-                computers: response.computers,
-              },
-              null,
-              2
-            ),
-          },
-        ],
+        page: toPage(skip, limit),
       };
+      // Map the friendly status filter onto the library's online-state params.
+      if (status === "online") {
+        params.isOnline = true;
+      } else if (status === "offline") {
+        params.isOnline = false;
+      } else if (status === "all") {
+        params.includeOffline = true;
+      }
+
+      const response = await client.computers.list(params);
+
+      return listResult("computers", response);
     }
 
     case "cwautomate_computers_get": {
       const computerId = args.computer_id as number;
       const computer = await client.computers.get(computerId);
 
-      return {
-        content: [{ type: "text", text: JSON.stringify(computer, null, 2) }],
-      };
+      return jsonResult(computer);
     }
 
     case "cwautomate_computers_search": {
       const query = args.query as string;
       const limit = (args.limit as number) || 50;
-      const response = await client.computers.search({
-        query,
-        clientId: args.client_id as number | undefined,
+      const clientId = args.client_id as number | undefined;
+
+      // The library has no dedicated search endpoint; use a name condition.
+      const response = await client.computers.list({
+        condition: `ComputerName like '%${escapeConditionValue(query)}%'`,
+        clientId,
         pageSize: limit,
       });
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                total: response.total,
-                computers: response.computers,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return listResult("computers", response);
     }
 
     case "cwautomate_computers_reboot": {
       const computerId = args.computer_id as number;
       const force = args.force as boolean | undefined;
-      const result = await client.computers.reboot(computerId, { force });
+      await client.computers.restart(computerId, force);
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                success: true,
-                message: `Reboot command sent to computer ${computerId}`,
-                result,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return jsonResult({
+        success: true,
+        message: `Reboot command sent to computer ${computerId}`,
+      });
     }
 
     case "cwautomate_computers_run_script": {
       const computerId = args.computer_id as number;
       const scriptId = args.script_id as number;
       const parameters = args.parameters as Record<string, string> | undefined;
-      const result = await client.computers.runScript(computerId, scriptId, {
-        parameters,
+      const result = await client.scripts.execute({
+        ScriptId: scriptId,
+        ComputerIds: [computerId],
+        Parameters: parameters,
       });
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                success: true,
-                message: `Script ${scriptId} queued for execution on computer ${computerId}`,
-                result,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return jsonResult({
+        success: true,
+        message: `Script ${scriptId} queued for execution on computer ${computerId}`,
+        result,
+      });
     }
 
     default:

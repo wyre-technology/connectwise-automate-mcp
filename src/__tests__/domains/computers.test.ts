@@ -8,33 +8,31 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const {
   mockComputersList,
   mockComputersGet,
-  mockComputersSearch,
-  mockComputersReboot,
-  mockComputersRunScript,
+  mockComputersRestart,
+  mockScriptsExecute,
   mockClient,
 } = vi.hoisted(() => {
   const mockComputersList = vi.fn();
   const mockComputersGet = vi.fn();
-  const mockComputersSearch = vi.fn();
-  const mockComputersReboot = vi.fn();
-  const mockComputersRunScript = vi.fn();
+  const mockComputersRestart = vi.fn();
+  const mockScriptsExecute = vi.fn();
 
   const mockClient = {
     computers: {
       list: mockComputersList,
       get: mockComputersGet,
-      search: mockComputersSearch,
-      reboot: mockComputersReboot,
-      runScript: mockComputersRunScript,
+      restart: mockComputersRestart,
+    },
+    scripts: {
+      execute: mockScriptsExecute,
     },
   };
 
   return {
     mockComputersList,
     mockComputersGet,
-    mockComputersSearch,
-    mockComputersReboot,
-    mockComputersRunScript,
+    mockComputersRestart,
+    mockScriptsExecute,
     mockClient,
   };
 });
@@ -59,29 +57,30 @@ describe("Computers Domain Handler", () => {
     // Clear call history
     mockComputersList.mockClear();
     mockComputersGet.mockClear();
-    mockComputersSearch.mockClear();
-    mockComputersReboot.mockClear();
-    mockComputersRunScript.mockClear();
+    mockComputersRestart.mockClear();
+    mockScriptsExecute.mockClear();
 
-    // Reset mock implementations
+    // Reset mock implementations to the real API response shape
     mockComputersList.mockResolvedValue({
-      total: 2,
-      computers: [
-        { id: 1, computerName: "Computer 1" },
-        { id: 2, computerName: "Computer 2" },
+      TotalRecords: 2,
+      Data: [
+        { Id: 1, ComputerName: "Computer 1" },
+        { Id: 2, ComputerName: "Computer 2" },
       ],
     });
     mockComputersGet.mockResolvedValue({
-      id: 1,
-      computerName: "Computer 1",
-      clientId: 5,
+      Id: 1,
+      ComputerName: "Computer 1",
+      ClientId: 5,
     });
-    mockComputersSearch.mockResolvedValue({
-      total: 1,
-      computers: [{ id: 1, computerName: "Computer 1" }],
+    mockComputersRestart.mockResolvedValue(undefined);
+    mockScriptsExecute.mockResolvedValue({
+      JobId: "abc",
+      ScriptId: 100,
+      ComputerIds: [1],
+      Status: "Queued",
+      QueuedDate: "2024-01-01T00:00:00Z",
     });
-    mockComputersReboot.mockResolvedValue({ success: true });
-    mockComputersRunScript.mockResolvedValue({ jobId: 123 });
   });
 
   describe("getTools", () => {
@@ -154,7 +153,7 @@ describe("Computers Domain Handler", () => {
         expect(data.computers).toHaveLength(2);
       });
 
-      it("should pass filters to API", async () => {
+      it("should map filters and online status to the library params", async () => {
         await computersHandler.handleCall("cwautomate_computers_list", {
           client_id: 5,
           status: "online",
@@ -164,9 +163,9 @@ describe("Computers Domain Handler", () => {
         expect(mockComputersList).toHaveBeenCalledWith({
           clientId: 5,
           locationId: undefined,
-          status: "online",
           pageSize: 10,
-          skip: 0,
+          page: undefined,
+          isOnline: true,
         });
       });
     });
@@ -183,13 +182,13 @@ describe("Computers Domain Handler", () => {
         expect(result.isError).toBeUndefined();
 
         const data = JSON.parse(result.content[0].text);
-        expect(data.id).toBe(1);
-        expect(data.computerName).toBe("Computer 1");
+        expect(data.Id).toBe(1);
+        expect(data.ComputerName).toBe("Computer 1");
       });
     });
 
     describe("cwautomate_computers_search", () => {
-      it("should search computers", async () => {
+      it("should search computers via a name condition", async () => {
         const result = await computersHandler.handleCall(
           "cwautomate_computers_search",
           {
@@ -200,19 +199,25 @@ describe("Computers Domain Handler", () => {
         expect(result.isError).toBeUndefined();
 
         const data = JSON.parse(result.content[0].text);
-        expect(data.total).toBe(1);
-        expect(data.computers).toHaveLength(1);
+        expect(data.total).toBe(2);
+        expect(data.computers).toHaveLength(2);
+
+        expect(mockComputersList).toHaveBeenCalledWith({
+          condition: "ComputerName like '%Computer%'",
+          clientId: undefined,
+          pageSize: 50,
+        });
       });
 
-      it("should pass search parameters to API", async () => {
+      it("should pass search parameters to the list condition", async () => {
         await computersHandler.handleCall("cwautomate_computers_search", {
           query: "workstation",
           client_id: 5,
           limit: 25,
         });
 
-        expect(mockComputersSearch).toHaveBeenCalledWith({
-          query: "workstation",
+        expect(mockComputersList).toHaveBeenCalledWith({
+          condition: "ComputerName like '%workstation%'",
           clientId: 5,
           pageSize: 25,
         });
@@ -220,7 +225,7 @@ describe("Computers Domain Handler", () => {
     });
 
     describe("cwautomate_computers_reboot", () => {
-      it("should reboot a computer", async () => {
+      it("should reboot a computer via restart", async () => {
         const result = await computersHandler.handleCall(
           "cwautomate_computers_reboot",
           {
@@ -233,20 +238,21 @@ describe("Computers Domain Handler", () => {
         const data = JSON.parse(result.content[0].text);
         expect(data.success).toBe(true);
         expect(data.message).toContain("Reboot command sent");
+        expect(mockComputersRestart).toHaveBeenCalledWith(1, undefined);
       });
 
-      it("should pass force parameter to API", async () => {
+      it("should pass the force parameter to restart", async () => {
         await computersHandler.handleCall("cwautomate_computers_reboot", {
           computer_id: 1,
           force: true,
         });
 
-        expect(mockComputersReboot).toHaveBeenCalledWith(1, { force: true });
+        expect(mockComputersRestart).toHaveBeenCalledWith(1, true);
       });
     });
 
     describe("cwautomate_computers_run_script", () => {
-      it("should run a script on a computer", async () => {
+      it("should run a script on a computer via scripts.execute", async () => {
         const result = await computersHandler.handleCall(
           "cwautomate_computers_run_script",
           {
@@ -260,17 +266,24 @@ describe("Computers Domain Handler", () => {
         const data = JSON.parse(result.content[0].text);
         expect(data.success).toBe(true);
         expect(data.message).toContain("Script 100 queued");
+        expect(mockScriptsExecute).toHaveBeenCalledWith({
+          ScriptId: 100,
+          ComputerIds: [1],
+          Parameters: undefined,
+        });
       });
 
-      it("should pass parameters to API", async () => {
+      it("should pass parameters to scripts.execute", async () => {
         await computersHandler.handleCall("cwautomate_computers_run_script", {
           computer_id: 1,
           script_id: 100,
           parameters: { arg1: "value1" },
         });
 
-        expect(mockComputersRunScript).toHaveBeenCalledWith(1, 100, {
-          parameters: { arg1: "value1" },
+        expect(mockScriptsExecute).toHaveBeenCalledWith({
+          ScriptId: 100,
+          ComputerIds: [1],
+          Parameters: { arg1: "value1" },
         });
       });
     });

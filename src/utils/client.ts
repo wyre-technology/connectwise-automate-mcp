@@ -5,7 +5,17 @@
  * to avoid loading the entire library upfront.
  */
 
-import type { ConnectWiseAutomateClient } from "@wyre-technology/node-connectwise-automate";
+import type {
+  ConnectWiseAutomateClient,
+  ConnectWiseAutomateConfig,
+} from "@wyre-technology/node-connectwise-automate";
+
+/**
+ * Authentication method for ConnectWise Automate.
+ * - "integrator": machine-to-machine integrator account (no 2FA). Default.
+ * - "user": interactive user login, supports a 2FA passcode.
+ */
+export type CWAutomateAuthMethod = "integrator" | "user";
 
 export interface CWAutomateCredentials {
   serverUrl: string;
@@ -13,6 +23,12 @@ export interface CWAutomateCredentials {
   username: string;
   password: string;
   twoFactorCode?: string;
+  /**
+   * Authentication method (default: "integrator"). When unset, "user" is
+   * inferred if a twoFactorCode is supplied, since 2FA is only valid for
+   * interactive user authentication.
+   */
+  authMethod?: CWAutomateAuthMethod;
 }
 
 let _client: ConnectWiseAutomateClient | null = null;
@@ -39,7 +55,69 @@ export function getCredentials(): CWAutomateCredentials | null {
     return null;
   }
 
-  return { serverUrl, clientId, username, password, twoFactorCode };
+  return {
+    serverUrl,
+    clientId,
+    username,
+    password,
+    twoFactorCode,
+    authMethod: parseAuthMethod(process.env.CW_AUTOMATE_AUTH_METHOD),
+  };
+}
+
+/**
+ * Parse an auth method string from configuration, ignoring invalid values.
+ */
+export function parseAuthMethod(
+  value?: string
+): CWAutomateAuthMethod | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "user" || normalized === "integrator"
+    ? normalized
+    : undefined;
+}
+
+/**
+ * Resolve the effective auth method for a set of credentials.
+ * Honors an explicit choice; otherwise defaults to "integrator", upgrading to
+ * "user" only when a 2FA code is present (2FA is invalid for integrator auth).
+ */
+function resolveAuthMethod(creds: CWAutomateCredentials): CWAutomateAuthMethod {
+  if (creds.authMethod) {
+    return creds.authMethod;
+  }
+  return creds.twoFactorCode ? "user" : "integrator";
+}
+
+/**
+ * Build the library client config (with its nested `credentials` object) from
+ * the flat credential set the MCP server collects from env/headers.
+ */
+function buildClientConfig(
+  creds: CWAutomateCredentials
+): ConnectWiseAutomateConfig {
+  if (resolveAuthMethod(creds) === "user") {
+    return {
+      serverUrl: creds.serverUrl,
+      clientId: creds.clientId,
+      credentials: {
+        method: "user",
+        username: creds.username,
+        password: creds.password,
+        twoFactorCode: creds.twoFactorCode,
+      },
+    };
+  }
+
+  return {
+    serverUrl: creds.serverUrl,
+    clientId: creds.clientId,
+    credentials: {
+      method: "integrator",
+      integratorUsername: creds.username,
+      integratorPassword: creds.password,
+    },
+  };
 }
 
 /**
@@ -76,7 +154,8 @@ export async function getClient(): Promise<ConnectWiseAutomateClient> {
       creds.clientId !== _credentials.clientId ||
       creds.username !== _credentials.username ||
       creds.password !== _credentials.password ||
-      creds.twoFactorCode !== _credentials.twoFactorCode)
+      creds.twoFactorCode !== _credentials.twoFactorCode ||
+      creds.authMethod !== _credentials.authMethod)
   ) {
     _client = null;
   }
@@ -86,13 +165,7 @@ export async function getClient(): Promise<ConnectWiseAutomateClient> {
     const { ConnectWiseAutomateClient } = await import(
       "@wyre-technology/node-connectwise-automate"
     );
-    _client = new ConnectWiseAutomateClient({
-      serverUrl: creds.serverUrl,
-      clientId: creds.clientId,
-      username: creds.username,
-      password: creds.password,
-      twoFactorCode: creds.twoFactorCode,
-    });
+    _client = new ConnectWiseAutomateClient(buildClientConfig(creds));
     _credentials = creds;
   }
 
@@ -109,13 +182,7 @@ export async function createClientDirect(
   const { ConnectWiseAutomateClient } = await import(
     "@wyre-technology/node-connectwise-automate"
   );
-  return new ConnectWiseAutomateClient({
-    serverUrl: creds.serverUrl,
-    clientId: creds.clientId,
-    username: creds.username,
-    password: creds.password,
-    twoFactorCode: creds.twoFactorCode,
-  });
+  return new ConnectWiseAutomateClient(buildClientConfig(creds));
 }
 
 /**

@@ -24,6 +24,7 @@ import {
   createClientDirect,
   setClientOverride,
   clearClientOverride,
+  parseAuthMethod,
   type CWAutomateCredentials,
 } from "./utils/client.js";
 import { setServerRef } from "./utils/server-ref.js";
@@ -123,11 +124,12 @@ async function getAllDomainTools(): Promise<Tool[]> {
  * `{ error }` otherwise.
  *
  * Gateway header mapping:
- *   X-CWA-Server    -> serverUrl
- *   X-CWA-Client-ID -> clientId
- *   X-CWA-Username  -> username
- *   X-CWA-Password  -> password
- *   X-CWA-2FA       -> twoFactorCode (optional)
+ *   X-CWA-Server      -> serverUrl
+ *   X-CWA-Client-ID   -> clientId
+ *   X-CWA-Username    -> username
+ *   X-CWA-Password    -> password
+ *   X-CWA-2FA         -> twoFactorCode (optional)
+ *   X-CWA-Auth-Method -> authMethod ("integrator" | "user", optional; default integrator)
  */
 export function resolveGatewayCredentials(
   getHeader: (lowerName: string) => string | undefined
@@ -137,6 +139,7 @@ export function resolveGatewayCredentials(
   const username = getHeader("x-cwa-username");
   const password = getHeader("x-cwa-password");
   const twoFactorCode = getHeader("x-cwa-2fa");
+  const authMethod = parseAuthMethod(getHeader("x-cwa-auth-method"));
 
   if (!serverUrl || !clientId || !username || !password) {
     return {
@@ -153,6 +156,9 @@ export function resolveGatewayCredentials(
   };
   if (twoFactorCode) {
     creds.twoFactorCode = twoFactorCode;
+  }
+  if (authMethod) {
+    creds.authMethod = authMethod;
   }
   return { creds };
 }

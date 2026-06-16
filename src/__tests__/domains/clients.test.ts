@@ -65,31 +65,32 @@ describe("Clients Domain Handler", () => {
     mockClientsUpdate.mockClear();
     mockLocationsList.mockClear();
 
-    // Reset mock implementations
+    // Reset mock implementations to the real API response shape
     mockClientsList.mockResolvedValue({
-      total: 2,
-      clients: [
-        { id: 1, name: "Client 1" },
-        { id: 2, name: "Client 2" },
+      TotalRecords: 2,
+      Data: [
+        { Id: 1, Name: "Client 1" },
+        { Id: 2, Name: "Client 2" },
       ],
     });
     mockClientsGet.mockResolvedValue({
-      id: 1,
-      name: "Client 1",
-      city: "Test City",
+      Id: 1,
+      Name: "Client 1",
+      City: "Test City",
     });
     mockClientsCreate.mockResolvedValue({
-      id: 100,
-      name: "New Client",
+      Id: 100,
+      Name: "New Client",
     });
     mockClientsUpdate.mockResolvedValue({
-      id: 1,
-      name: "Updated Client",
+      Id: 1,
+      Name: "Updated Client",
     });
     mockLocationsList.mockResolvedValue({
-      locations: [
-        { id: 1, name: "Main Office" },
-        { id: 2, name: "Branch Office" },
+      TotalRecords: 2,
+      Data: [
+        { Id: 1, Name: "Main Office" },
+        { Id: 2, Name: "Branch Office" },
       ],
     });
   });
@@ -152,7 +153,7 @@ describe("Clients Domain Handler", () => {
         expect(data.clients).toHaveLength(2);
       });
 
-      it("should pass pagination to API", async () => {
+      it("should translate skip/limit to page/pageSize", async () => {
         await clientsHandler.handleCall("cwautomate_clients_list", {
           limit: 10,
           skip: 20,
@@ -160,7 +161,7 @@ describe("Clients Domain Handler", () => {
 
         expect(mockClientsList).toHaveBeenCalledWith({
           pageSize: 10,
-          skip: 20,
+          page: 3,
         });
       });
     });
@@ -177,8 +178,8 @@ describe("Clients Domain Handler", () => {
         expect(result.isError).toBeUndefined();
 
         const data = JSON.parse(result.content[0].text);
-        expect(data.id).toBe(1);
-        expect(data.name).toBe("Client 1");
+        expect(data.Id).toBe(1);
+        expect(data.Name).toBe("Client 1");
       });
 
       it("should include locations when requested", async () => {
@@ -193,6 +194,7 @@ describe("Clients Domain Handler", () => {
         const data = JSON.parse(result.content[0].text);
         expect(data.locations).toBeDefined();
         expect(data.locations).toHaveLength(2);
+        expect(mockLocationsList).toHaveBeenCalledWith({ clientId: 1 });
       });
     });
 
@@ -208,11 +210,11 @@ describe("Clients Domain Handler", () => {
         expect(result.isError).toBeUndefined();
 
         const data = JSON.parse(result.content[0].text);
-        expect(data.id).toBe(100);
-        expect(data.name).toBe("New Client");
+        expect(data.Id).toBe(100);
+        expect(data.Name).toBe("New Client");
       });
 
-      it("should pass all fields to API", async () => {
+      it("should map fields to the library's PascalCase shape", async () => {
         await clientsHandler.handleCall("cwautomate_clients_create", {
           name: "New Client",
           city: "Test City",
@@ -220,17 +222,15 @@ describe("Clients Domain Handler", () => {
           zip: "12345",
           country: "USA",
           phone: "555-1234",
-          email: "test@example.com",
         });
 
         expect(mockClientsCreate).toHaveBeenCalledWith({
-          name: "New Client",
-          city: "Test City",
-          state: "Test State",
-          zip: "12345",
-          country: "USA",
-          phone: "555-1234",
-          email: "test@example.com",
+          Name: "New Client",
+          City: "Test City",
+          State: "Test State",
+          ZipCode: "12345",
+          Country: "USA",
+          Phone: "555-1234",
         });
       });
     });
@@ -248,10 +248,10 @@ describe("Clients Domain Handler", () => {
         expect(result.isError).toBeUndefined();
 
         const data = JSON.parse(result.content[0].text);
-        expect(data.name).toBe("Updated Client");
+        expect(data.Name).toBe("Updated Client");
       });
 
-      it("should pass update fields to API", async () => {
+      it("should map update fields to the library's PascalCase shape", async () => {
         await clientsHandler.handleCall("cwautomate_clients_update", {
           client_id: 1,
           name: "Updated",
@@ -259,13 +259,12 @@ describe("Clients Domain Handler", () => {
         });
 
         expect(mockClientsUpdate).toHaveBeenCalledWith(1, {
-          name: "Updated",
-          city: "New City",
-          state: undefined,
-          zip: undefined,
-          country: undefined,
-          phone: undefined,
-          email: undefined,
+          Name: "Updated",
+          City: "New City",
+          State: undefined,
+          ZipCode: undefined,
+          Country: undefined,
+          Phone: undefined,
         });
       });
     });

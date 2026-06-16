@@ -5,9 +5,33 @@
  */
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { AlertListParams } from "@wyre-technology/node-connectwise-automate";
 import type { DomainHandler, CallToolResult } from "../utils/types.js";
 import { getClient } from "../utils/client.js";
 import { elicitSelection } from "../utils/elicitation.js";
+import { toPage } from "../utils/pagination.js";
+import { jsonResult, listResult } from "../utils/results.js";
+
+type AlertStatusFilter = "new" | "acknowledged" | "closed" | "all";
+
+/**
+ * Map the friendly status filter to the library's status value.
+ * Returns undefined for "all" (or unset), which removes the status filter.
+ */
+function toAlertStatus(
+  status?: AlertStatusFilter
+): AlertListParams["status"] | undefined {
+  switch (status) {
+    case "new":
+      return "New";
+    case "acknowledged":
+      return "Acknowledged";
+    case "closed":
+      return "Closed";
+    default:
+      return undefined;
+  }
+}
 
 /**
  * Get alert domain tools
@@ -31,17 +55,16 @@ function getTools(): Tool[] {
           },
           status: {
             type: "string",
-            enum: ["active", "acknowledged", "all"],
-            description: "Filter by alert status (default: active)",
+            enum: ["new", "acknowledged", "closed", "all"],
+            description: "Filter by alert status (default: all)",
           },
           severity: {
-            type: "string",
-            enum: ["critical", "warning", "informational", "all"],
-            description: "Filter by alert severity",
+            type: "number",
+            description: "Filter by alert severity level (1-5)",
           },
           limit: {
             type: "number",
-            description: "Maximum number of results (default: 50)",
+            description: "Maximum number of results per page (default: 50)",
           },
           skip: {
             type: "number",
@@ -98,89 +121,60 @@ async function handleCall(
     case "cwautomate_alerts_list": {
       const limit = (args.limit as number) || 50;
       const skip = (args.skip as number) || 0;
-      let severity = args.severity as
-        | "critical"
-        | "warning"
-        | "informational"
-        | "all"
-        | undefined;
+      const severity = args.severity as number | undefined;
       const computerId = args.computer_id as number | undefined;
       const clientId = args.client_id as number | undefined;
-      const status = args.status as "active" | "acknowledged" | "all" | undefined;
+      let status = args.status as AlertStatusFilter | undefined;
 
-      // If no filters provided, ask the user if they want to filter by severity
-      if (!computerId && !clientId && !status && !severity) {
+      // If no filters provided, ask the user if they want to filter by status
+      if (!computerId && !clientId && !status && severity === undefined) {
         const selected = await elicitSelection(
-          "Listing all alerts can return many results. Would you like to filter by severity?",
-          "severity",
+          "Listing all alerts can return many results. Would you like to filter by status?",
+          "status",
           [
-            { value: "all", label: "All severities" },
-            { value: "critical", label: "Critical only" },
-            { value: "warning", label: "Warning only" },
-            { value: "informational", label: "Informational only" },
+            { value: "all", label: "All statuses" },
+            { value: "new", label: "New only" },
+            { value: "acknowledged", label: "Acknowledged only" },
+            { value: "closed", label: "Closed only" },
           ]
         );
-        if (selected && selected !== "all") {
-          severity = selected as "critical" | "warning" | "informational";
+        if (selected) {
+          status = selected as AlertStatusFilter;
         }
       }
 
       const response = await client.alerts.list({
         computerId,
         clientId,
-        status,
+        status: toAlertStatus(status),
         severity,
         pageSize: limit,
-        skip,
+        page: toPage(skip, limit),
       });
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                total: response.total,
-                alerts: response.alerts,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return listResult("alerts", response);
     }
 
     case "cwautomate_alerts_get": {
       const alertId = args.alert_id as number;
       const alert = await client.alerts.get(alertId);
 
-      return {
-        content: [{ type: "text", text: JSON.stringify(alert, null, 2) }],
-      };
+      return jsonResult(alert);
     }
 
     case "cwautomate_alerts_acknowledge": {
       const alertId = args.alert_id as number;
       const comment = args.comment as string | undefined;
-      const result = await client.alerts.acknowledge(alertId, { comment });
+      const result = await client.alerts.acknowledge({
+        AlertIds: [alertId],
+        Notes: comment,
+      });
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                success: true,
-                message: `Alert ${alertId} acknowledged`,
-                result,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return jsonResult({
+        success: true,
+        message: `Alert ${alertId} acknowledged`,
+        result,
+      });
     }
 
     default:

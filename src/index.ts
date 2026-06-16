@@ -13,18 +13,19 @@
  * - HTTP: credentials via env vars (AUTH_MODE=env) or per-request headers (AUTH_MODE=gateway)
  *
  * Gateway header mapping (from vendor-config.ts):
- *   X-CWA-Server    -> serverUrl
- *   X-CWA-Client-ID -> clientId
- *   X-CWA-Username  -> username
- *   X-CWA-Password  -> password
- *   X-CWA-2FA       -> twoFactorCode (optional)
+ *   X-CWA-Server      -> serverUrl
+ *   X-CWA-Client-ID   -> clientId
+ *   X-CWA-Username    -> username
+ *   X-CWA-Password    -> password
+ *   X-CWA-2FA         -> twoFactorCode (optional)
+ *   X-CWA-Auth-Method -> authMethod ("integrator" | "user", optional; default integrator)
  */
 
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { type CWAutomateCredentials } from "./utils/client.js";
-import { createMcpServer } from "./mcp-server.js";
+import { createMcpServer, resolveGatewayCredentials } from "./mcp-server.js";
 
 /**
  * Start the server with stdio transport (default)
@@ -84,18 +85,10 @@ async function startHttpTransport(): Promise<void> {
         // No process.env mutation -- each request gets its own client.
         let credentialOverrides: CWAutomateCredentials | undefined;
         if (isGatewayMode) {
-          const serverUrl = req.headers["x-cwa-server"] as string | undefined;
-          const clientId = req.headers["x-cwa-client-id"] as string | undefined;
-          const username = req.headers["x-cwa-username"] as string | undefined;
-          const password = req.headers["x-cwa-password"] as string | undefined;
-          const twoFactorCode = req.headers["x-cwa-2fa"] as string | undefined;
-
-          if (serverUrl && clientId && username && password) {
-            credentialOverrides = { serverUrl, clientId, username, password };
-            if (twoFactorCode) {
-              credentialOverrides.twoFactorCode = twoFactorCode;
-            }
-          }
+          const { creds } = resolveGatewayCredentials(
+            (name) => req.headers[name] as string | undefined
+          );
+          credentialOverrides = creds;
         }
 
         const transport = new StreamableHTTPServerTransport({
