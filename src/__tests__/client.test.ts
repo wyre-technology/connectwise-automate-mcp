@@ -3,18 +3,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { ConnectWiseAutomateConfig } from "@wyre-technology/node-connectwise-automate";
 import { getCredentials, getClient, clearClient } from "../utils/client.js";
 
-// Mock the node-connectwise-automate library
+// Mock the node-connectwise-automate library. The constructor stores the
+// resolved config so tests can assert the auth shape that was passed in.
 vi.mock("@wyre-technology/node-connectwise-automate", () => ({
   ConnectWiseAutomateClient: vi.fn().mockImplementation((config) => ({
     config,
     computers: {
       list: vi.fn(),
       get: vi.fn(),
-      search: vi.fn(),
-      reboot: vi.fn(),
-      runScript: vi.fn(),
+      restart: vi.fn(),
     },
     clients: {
       list: vi.fn(),
@@ -38,12 +38,21 @@ vi.mock("@wyre-technology/node-connectwise-automate", () => ({
   })),
 }));
 
+/**
+ * Read the config the mocked client was constructed with.
+ */
+function configOf(client: unknown): ConnectWiseAutomateConfig {
+  return (client as { config: ConnectWiseAutomateConfig }).config;
+}
+
 describe("ConnectWise Automate Client Utilities", () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
     // Reset environment variables before each test
     process.env = { ...originalEnv };
+    delete process.env.CW_AUTOMATE_AUTH_METHOD;
+    delete process.env.CW_AUTOMATE_2FA_CODE;
     clearClient();
   });
 
@@ -116,6 +125,7 @@ describe("ConnectWise Automate Client Utilities", () => {
         username: "test-username",
         password: "test-password",
         twoFactorCode: undefined,
+        authMethod: undefined,
       });
     });
 
@@ -133,7 +143,21 @@ describe("ConnectWise Automate Client Utilities", () => {
         username: "test-username",
         password: "test-password",
         twoFactorCode: "123456",
+        authMethod: undefined,
       });
+    });
+
+    it("should parse an explicit auth method and ignore invalid values", () => {
+      process.env.CW_AUTOMATE_SERVER_URL = "https://automate.example.com";
+      process.env.CW_AUTOMATE_CLIENT_ID = "test-client-id";
+      process.env.CW_AUTOMATE_USERNAME = "test-username";
+      process.env.CW_AUTOMATE_PASSWORD = "test-password";
+
+      process.env.CW_AUTOMATE_AUTH_METHOD = "USER";
+      expect(getCredentials()?.authMethod).toBe("user");
+
+      process.env.CW_AUTOMATE_AUTH_METHOD = "bogus";
+      expect(getCredentials()?.authMethod).toBeUndefined();
     });
   });
 
@@ -161,6 +185,49 @@ describe("ConnectWise Automate Client Utilities", () => {
       expect(client.clients).toBeDefined();
       expect(client.alerts).toBeDefined();
       expect(client.scripts).toBeDefined();
+    });
+
+    it("should default to integrator auth with nested credentials", async () => {
+      process.env.CW_AUTOMATE_SERVER_URL = "https://automate.example.com";
+      process.env.CW_AUTOMATE_CLIENT_ID = "test-client-id";
+      process.env.CW_AUTOMATE_USERNAME = "test-username";
+      process.env.CW_AUTOMATE_PASSWORD = "test-password";
+
+      const config = configOf(await getClient());
+      expect(config.serverUrl).toBe("https://automate.example.com");
+      expect(config.clientId).toBe("test-client-id");
+      expect(config.credentials.method).toBe("integrator");
+      if (config.credentials.method === "integrator") {
+        expect(config.credentials.integratorUsername).toBe("test-username");
+        expect(config.credentials.integratorPassword).toBe("test-password");
+      }
+    });
+
+    it("should use user auth when a 2FA code is supplied", async () => {
+      process.env.CW_AUTOMATE_SERVER_URL = "https://automate.example.com";
+      process.env.CW_AUTOMATE_CLIENT_ID = "test-client-id";
+      process.env.CW_AUTOMATE_USERNAME = "test-username";
+      process.env.CW_AUTOMATE_PASSWORD = "test-password";
+      process.env.CW_AUTOMATE_2FA_CODE = "123456";
+
+      const config = configOf(await getClient());
+      expect(config.credentials.method).toBe("user");
+      if (config.credentials.method === "user") {
+        expect(config.credentials.username).toBe("test-username");
+        expect(config.credentials.password).toBe("test-password");
+        expect(config.credentials.twoFactorCode).toBe("123456");
+      }
+    });
+
+    it("should honor an explicit user auth method without 2FA", async () => {
+      process.env.CW_AUTOMATE_SERVER_URL = "https://automate.example.com";
+      process.env.CW_AUTOMATE_CLIENT_ID = "test-client-id";
+      process.env.CW_AUTOMATE_USERNAME = "test-username";
+      process.env.CW_AUTOMATE_PASSWORD = "test-password";
+      process.env.CW_AUTOMATE_AUTH_METHOD = "user";
+
+      const config = configOf(await getClient());
+      expect(config.credentials.method).toBe("user");
     });
 
     it("should return cached client on subsequent calls", async () => {

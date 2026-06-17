@@ -59,11 +59,23 @@ Set the following environment variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CW_AUTOMATE_SERVER_URL` | Yes | Your ConnectWise Automate server URL |
-| `CW_AUTOMATE_CLIENT_ID` | Yes | Integrator Client ID |
-| `CW_AUTOMATE_USERNAME` | Yes | Integrator username or user credentials |
+| `CW_AUTOMATE_SERVER_URL` | Yes | Your ConnectWise Automate server URL (e.g. `https://your-server.hostedrmm.com`) |
+| `CW_AUTOMATE_CLIENT_ID` | Yes | ConnectWise Automate Client ID |
+| `CW_AUTOMATE_USERNAME` | Yes | Integrator username or user login |
 | `CW_AUTOMATE_PASSWORD` | Yes | Integrator password or user password |
-| `CW_AUTOMATE_2FA_CODE` | No | Two-factor authentication code (if required) |
+| `CW_AUTOMATE_2FA_CODE` | No | Two-factor authentication code (forces `user` authentication) |
+| `CW_AUTOMATE_AUTH_METHOD` | No | `integrator` (default) or `user` |
+
+### Authentication methods
+
+The server supports both ConnectWise Automate authentication methods:
+
+- **`integrator`** (default) – machine-to-machine integrator account. Recommended for automation. Does not use 2FA.
+- **`user`** – interactive user login, which can supply a two-factor code.
+
+You normally don't need to set `CW_AUTOMATE_AUTH_METHOD`: integrator auth is used by
+default, and `user` auth is selected automatically when `CW_AUTOMATE_2FA_CODE` is
+provided.
 
 ## Usage
 
@@ -101,7 +113,7 @@ The server uses a decision tree pattern. Start by navigating to a domain:
 #### Computers
 - List computers with filtering options
 - Get computer details
-- Search computers by name or criteria
+- Search computers by name
 - Reboot computers remotely
 - Run scripts on computers
 

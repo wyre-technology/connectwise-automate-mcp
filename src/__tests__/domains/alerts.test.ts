@@ -49,21 +49,24 @@ describe("Alerts Domain Handler", () => {
     mockAlertsGet.mockClear();
     mockAlertsAcknowledge.mockClear();
 
-    // Reset mock implementations
+    // Reset mock implementations to the real API response shape
     mockAlertsList.mockResolvedValue({
-      total: 2,
-      alerts: [
-        { id: 1, message: "Alert 1", severity: "warning" },
-        { id: 2, message: "Alert 2", severity: "critical" },
+      TotalRecords: 2,
+      Data: [
+        { Id: 1, Name: "Alert 1", Severity: 3 },
+        { Id: 2, Name: "Alert 2", Severity: 1 },
       ],
     });
     mockAlertsGet.mockResolvedValue({
-      id: 1,
-      message: "Alert 1",
-      severity: "warning",
-      computerId: 5,
+      Id: 1,
+      Name: "Alert 1",
+      Severity: 3,
+      ComputerId: 5,
     });
-    mockAlertsAcknowledge.mockResolvedValue({ success: true });
+    mockAlertsAcknowledge.mockResolvedValue({
+      Count: 1,
+      AcknowledgedAlertIds: [1],
+    });
   });
 
   describe("getTools", () => {
@@ -113,22 +116,22 @@ describe("Alerts Domain Handler", () => {
         expect(data.alerts).toHaveLength(2);
       });
 
-      it("should pass filters to API", async () => {
+      it("should map filters to the library params", async () => {
         await alertsHandler.handleCall("cwautomate_alerts_list", {
           computer_id: 5,
           client_id: 10,
-          status: "active",
-          severity: "critical",
+          status: "new",
+          severity: 3,
           limit: 25,
         });
 
         expect(mockAlertsList).toHaveBeenCalledWith({
           computerId: 5,
           clientId: 10,
-          status: "active",
-          severity: "critical",
+          status: "New",
+          severity: 3,
           pageSize: 25,
-          skip: 0,
+          page: undefined,
         });
       });
     });
@@ -142,8 +145,8 @@ describe("Alerts Domain Handler", () => {
         expect(result.isError).toBeUndefined();
 
         const data = JSON.parse(result.content[0].text);
-        expect(data.id).toBe(1);
-        expect(data.message).toBe("Alert 1");
+        expect(data.Id).toBe(1);
+        expect(data.Name).toBe("Alert 1");
       });
     });
 
@@ -161,16 +164,21 @@ describe("Alerts Domain Handler", () => {
         const data = JSON.parse(result.content[0].text);
         expect(data.success).toBe(true);
         expect(data.message).toContain("Alert 1 acknowledged");
+        expect(mockAlertsAcknowledge).toHaveBeenCalledWith({
+          AlertIds: [1],
+          Notes: undefined,
+        });
       });
 
-      it("should pass comment to API", async () => {
+      it("should pass the comment as Notes to the API", async () => {
         await alertsHandler.handleCall("cwautomate_alerts_acknowledge", {
           alert_id: 1,
           comment: "Issue resolved",
         });
 
-        expect(mockAlertsAcknowledge).toHaveBeenCalledWith(1, {
-          comment: "Issue resolved",
+        expect(mockAlertsAcknowledge).toHaveBeenCalledWith({
+          AlertIds: [1],
+          Notes: "Issue resolved",
         });
       });
     });

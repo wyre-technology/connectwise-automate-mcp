@@ -7,6 +7,8 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { DomainHandler, CallToolResult } from "../utils/types.js";
 import { getClient } from "../utils/client.js";
+import { toPage } from "../utils/pagination.js";
+import { jsonResult, listResult } from "../utils/results.js";
 
 /**
  * Get client domain tools
@@ -22,7 +24,7 @@ function getTools(): Tool[] {
         properties: {
           limit: {
             type: "number",
-            description: "Maximum number of results (default: 50)",
+            description: "Maximum number of results per page (default: 50)",
           },
           skip: {
             type: "number",
@@ -79,10 +81,6 @@ function getTools(): Tool[] {
             type: "string",
             description: "Phone number",
           },
-          email: {
-            type: "string",
-            description: "Email address",
-          },
         },
         required: ["name"],
       },
@@ -121,10 +119,6 @@ function getTools(): Tool[] {
             type: "string",
             description: "New phone number",
           },
-          email: {
-            type: "string",
-            description: "New email address",
-          },
         },
         required: ["client_id"],
       },
@@ -147,87 +141,54 @@ async function handleCall(
       const skip = (args.skip as number) || 0;
       const response = await client.clients.list({
         pageSize: limit,
-        skip,
+        page: toPage(skip, limit),
       });
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                total: response.total,
-                clients: response.clients,
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return listResult("clients", response);
     }
 
     case "cwautomate_clients_get": {
       const clientId = args.client_id as number;
       const includeLocations = args.include_locations as boolean | undefined;
 
-      const clientData = await client.clients.get(clientId);
-
-      let locations;
       if (includeLocations) {
-        const locationsResponse = await client.locations.list({
-          clientId,
-        });
-        locations = locationsResponse.locations;
+        // The client and its locations are independent reads — fetch concurrently.
+        const [clientData, locationsResponse] = await Promise.all([
+          client.clients.get(clientId),
+          client.locations.list({ clientId }),
+        ]);
+        return jsonResult({ ...clientData, locations: locationsResponse.Data });
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              includeLocations ? { ...clientData, locations } : clientData,
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      const clientData = await client.clients.get(clientId);
+      return jsonResult(clientData);
     }
 
     case "cwautomate_clients_create": {
       const newClient = await client.clients.create({
-        name: args.name as string,
-        city: args.city as string | undefined,
-        state: args.state as string | undefined,
-        zip: args.zip as string | undefined,
-        country: args.country as string | undefined,
-        phone: args.phone as string | undefined,
-        email: args.email as string | undefined,
+        Name: args.name as string,
+        City: args.city as string | undefined,
+        State: args.state as string | undefined,
+        ZipCode: args.zip as string | undefined,
+        Country: args.country as string | undefined,
+        Phone: args.phone as string | undefined,
       });
 
-      return {
-        content: [{ type: "text", text: JSON.stringify(newClient, null, 2) }],
-      };
+      return jsonResult(newClient);
     }
 
     case "cwautomate_clients_update": {
       const clientId = args.client_id as number;
       const updatedClient = await client.clients.update(clientId, {
-        name: args.name as string | undefined,
-        city: args.city as string | undefined,
-        state: args.state as string | undefined,
-        zip: args.zip as string | undefined,
-        country: args.country as string | undefined,
-        phone: args.phone as string | undefined,
-        email: args.email as string | undefined,
+        Name: args.name as string | undefined,
+        City: args.city as string | undefined,
+        State: args.state as string | undefined,
+        ZipCode: args.zip as string | undefined,
+        Country: args.country as string | undefined,
+        Phone: args.phone as string | undefined,
       });
 
-      return {
-        content: [
-          { type: "text", text: JSON.stringify(updatedClient, null, 2) },
-        ],
-      };
+      return jsonResult(updatedClient);
     }
 
     default:

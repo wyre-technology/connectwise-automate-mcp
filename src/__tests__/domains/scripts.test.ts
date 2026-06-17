@@ -49,20 +49,26 @@ describe("Scripts Domain Handler", () => {
     mockScriptsGet.mockClear();
     mockScriptsExecute.mockClear();
 
-    // Reset mock implementations
+    // Reset mock implementations to the real API response shape
     mockScriptsList.mockResolvedValue({
-      total: 2,
-      scripts: [
-        { id: 1, name: "Script 1" },
-        { id: 2, name: "Script 2" },
+      TotalRecords: 2,
+      Data: [
+        { Id: 1, Name: "Script 1" },
+        { Id: 2, Name: "Script 2" },
       ],
     });
     mockScriptsGet.mockResolvedValue({
-      id: 1,
-      name: "Script 1",
-      description: "Test script",
+      Id: 1,
+      Name: "Script 1",
+      Description: "Test script",
     });
-    mockScriptsExecute.mockResolvedValue({ jobId: 123 });
+    mockScriptsExecute.mockResolvedValue({
+      JobId: "abc",
+      ScriptId: 1,
+      ComputerIds: [1],
+      Status: "Queued",
+      QueuedDate: "2024-01-01T00:00:00Z",
+    });
   });
 
   describe("getTools", () => {
@@ -85,7 +91,7 @@ describe("Scripts Domain Handler", () => {
       expect(getTool?.inputSchema.required).toContain("script_id");
     });
 
-    it("cwautomate_scripts_execute should require script_id", () => {
+    it("cwautomate_scripts_execute should require script_id and computer_ids", () => {
       const tools = scriptsHandler.getTools();
       const executeTool = tools.find(
         (t) => t.name === "cwautomate_scripts_execute"
@@ -93,6 +99,7 @@ describe("Scripts Domain Handler", () => {
 
       expect(executeTool).toBeDefined();
       expect(executeTool?.inputSchema.required).toContain("script_id");
+      expect(executeTool?.inputSchema.required).toContain("computer_ids");
     });
   });
 
@@ -112,7 +119,7 @@ describe("Scripts Domain Handler", () => {
         expect(data.scripts).toHaveLength(2);
       });
 
-      it("should pass filters to API", async () => {
+      it("should map search to the name filter", async () => {
         await scriptsHandler.handleCall("cwautomate_scripts_list", {
           folder_id: 5,
           search: "install",
@@ -121,9 +128,9 @@ describe("Scripts Domain Handler", () => {
 
         expect(mockScriptsList).toHaveBeenCalledWith({
           folderId: 5,
-          search: "install",
+          name: "install",
           pageSize: 25,
-          skip: 0,
+          page: undefined,
         });
       });
     });
@@ -140,37 +147,14 @@ describe("Scripts Domain Handler", () => {
         expect(result.isError).toBeUndefined();
 
         const data = JSON.parse(result.content[0].text);
-        expect(data.id).toBe(1);
-        expect(data.name).toBe("Script 1");
-      });
-
-      it("should pass includeContent to API", async () => {
-        await scriptsHandler.handleCall("cwautomate_scripts_get", {
-          script_id: 1,
-          include_content: true,
-        });
-
-        expect(mockScriptsGet).toHaveBeenCalledWith(1, { includeContent: true });
+        expect(data.Id).toBe(1);
+        expect(data.Name).toBe("Script 1");
+        expect(mockScriptsGet).toHaveBeenCalledWith(1);
       });
     });
 
     describe("cwautomate_scripts_execute", () => {
-      it("should execute a script", async () => {
-        const result = await scriptsHandler.handleCall(
-          "cwautomate_scripts_execute",
-          {
-            script_id: 1,
-          }
-        );
-
-        expect(result.isError).toBeUndefined();
-
-        const data = JSON.parse(result.content[0].text);
-        expect(data.success).toBe(true);
-        expect(data.message).toContain("Script 1 queued");
-      });
-
-      it("should execute on specific computers", async () => {
+      it("should execute a script on specific computers", async () => {
         const result = await scriptsHandler.handleCall(
           "cwautomate_scripts_execute",
           {
@@ -182,10 +166,12 @@ describe("Scripts Domain Handler", () => {
         expect(result.isError).toBeUndefined();
 
         const data = JSON.parse(result.content[0].text);
+        expect(data.success).toBe(true);
+        expect(data.message).toContain("Script 1 queued");
         expect(data.message).toContain("3 computer(s)");
       });
 
-      it("should pass all parameters to API", async () => {
+      it("should map parameters and priority to the library shape", async () => {
         await scriptsHandler.handleCall("cwautomate_scripts_execute", {
           script_id: 1,
           computer_ids: [1, 2],
@@ -193,10 +179,11 @@ describe("Scripts Domain Handler", () => {
           priority: "high",
         });
 
-        expect(mockScriptsExecute).toHaveBeenCalledWith(1, {
-          computerIds: [1, 2],
-          parameters: { arg1: "value1" },
-          priority: "high",
+        expect(mockScriptsExecute).toHaveBeenCalledWith({
+          ScriptId: 1,
+          ComputerIds: [1, 2],
+          Parameters: { arg1: "value1" },
+          Priority: 1,
         });
       });
     });
