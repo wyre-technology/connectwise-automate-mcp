@@ -8,7 +8,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { DomainHandler, CallToolResult } from "../utils/types.js";
 import { getClient } from "../utils/client.js";
 import { toPage } from "../utils/pagination.js";
-import { jsonResult, listResult } from "../utils/results.js";
+import { jsonResult, listResult, listItems } from "../utils/results.js";
 
 /**
  * Get client domain tools
@@ -157,7 +157,10 @@ async function handleCall(
           client.clients.get(clientId),
           client.locations.list({ clientId }),
         ]);
-        return jsonResult({ ...clientData, locations: locationsResponse.Data });
+        return jsonResult({
+          ...clientData,
+          locations: listItems(locationsResponse),
+        });
       }
 
       const clientData = await client.clients.get(clientId);

@@ -65,14 +65,12 @@ describe("Clients Domain Handler", () => {
     mockClientsUpdate.mockClear();
     mockLocationsList.mockClear();
 
-    // Reset mock implementations to the real API response shape
-    mockClientsList.mockResolvedValue({
-      TotalRecords: 2,
-      Data: [
-        { Id: 1, Name: "Client 1" },
-        { Id: 2, Name: "Client 2" },
-      ],
-    });
+    // Reset mock implementations to the real API response shape:
+    // Automate list endpoints return a bare JSON array (issue #35).
+    mockClientsList.mockResolvedValue([
+      { Id: 1, Name: "Client 1" },
+      { Id: 2, Name: "Client 2" },
+    ]);
     mockClientsGet.mockResolvedValue({
       Id: 1,
       Name: "Client 1",
@@ -86,13 +84,10 @@ describe("Clients Domain Handler", () => {
       Id: 1,
       Name: "Updated Client",
     });
-    mockLocationsList.mockResolvedValue({
-      TotalRecords: 2,
-      Data: [
-        { Id: 1, Name: "Main Office" },
-        { Id: 2, Name: "Branch Office" },
-      ],
-    });
+    mockLocationsList.mockResolvedValue([
+      { Id: 1, Name: "Main Office" },
+      { Id: 2, Name: "Branch Office" },
+    ]);
   });
 
   describe("getTools", () => {
