@@ -55,6 +55,13 @@ jobs:
 
       - name: Get released version
         id: version
+        # Run even if the Semantic Release step exited non-zero. semantic-release
+        # bumps package.json during `prepare` (before it creates the tag, the
+        # GitHub release, and finally pushes git notes). A flaky/duplicate notes
+        # push at that final step fails the step, but the release itself is
+        # already done — detect it from the package.json bump so a non-fatal
+        # hiccup can't silently skip artifact publishing.
+        if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -97,7 +104,11 @@ jobs:
     # otherwise rebuild and re-push :latest tagged with the stale package.json
     # version, clobbering the correctly-tagged :latest from the last real
     # release. Skipping docker cascades to deploy/registry (skipped dependency).
-    if: needs.release.outputs.released == 'true'
+    # always() so a non-fatal failure in the release job (e.g. semantic-release's
+    # final git-notes push) can't skip artifact publishing once a version was
+    # actually released. The released-output guard still prevents publishing on
+    # non-release pushes.
+    if: always() && needs.release.outputs.released == 'true'
     permissions:
       contents: read
       packages: write
@@ -155,7 +166,10 @@ jobs:
   deploy:
     name: Deploy to Azure Container Apps
     needs: [release, docker]
-    if: needs.release.outputs.released == 'true'
+    # always() so a non-fatal failure in the release job (e.g. semantic-release's
+    # final git-notes push) can't skip the deploy once a version was actually
+    # released. Still requires docker to have produced the image we deploy.
+    if: always() && needs.release.outputs.released == 'true' && needs.docker.result == 'success'
     permissions:
       id-token: write
       contents: read
@@ -171,7 +185,11 @@ jobs:
     name: Publish to MCP Registry
     runs-on: ubuntu-latest
     needs: [release, docker]
-    if: needs.release.outputs.released == 'true'
+    # always() so a non-fatal failure in the release job (e.g. semantic-release's
+    # final git-notes push) can't skip the registry publish once a version was
+    # actually released. Still requires docker, since the listing points at the
+    # pushed image.
+    if: always() && needs.release.outputs.released == 'true' && needs.docker.result == 'success'
     permissions:
       id-token: write
       contents: read
