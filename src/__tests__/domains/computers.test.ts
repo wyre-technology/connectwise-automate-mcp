@@ -60,14 +60,12 @@ describe("Computers Domain Handler", () => {
     mockComputersRestart.mockClear();
     mockScriptsExecute.mockClear();
 
-    // Reset mock implementations to the real API response shape
-    mockComputersList.mockResolvedValue({
-      TotalRecords: 2,
-      Data: [
-        { Id: 1, ComputerName: "Computer 1" },
-        { Id: 2, ComputerName: "Computer 2" },
-      ],
-    });
+    // Reset mock implementations to the real API response shape:
+    // Automate list endpoints return a bare JSON array (issue #35).
+    mockComputersList.mockResolvedValue([
+      { Id: 1, ComputerName: "Computer 1" },
+      { Id: 2, ComputerName: "Computer 2" },
+    ]);
     mockComputersGet.mockResolvedValue({
       Id: 1,
       ComputerName: "Computer 1",

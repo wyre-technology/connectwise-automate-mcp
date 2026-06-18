@@ -49,14 +49,12 @@ describe("Scripts Domain Handler", () => {
     mockScriptsGet.mockClear();
     mockScriptsExecute.mockClear();
 
-    // Reset mock implementations to the real API response shape
-    mockScriptsList.mockResolvedValue({
-      TotalRecords: 2,
-      Data: [
-        { Id: 1, Name: "Script 1" },
-        { Id: 2, Name: "Script 2" },
-      ],
-    });
+    // Reset mock implementations to the real API response shape:
+    // Automate list endpoints return a bare JSON array (issue #35).
+    mockScriptsList.mockResolvedValue([
+      { Id: 1, Name: "Script 1" },
+      { Id: 2, Name: "Script 2" },
+    ]);
     mockScriptsGet.mockResolvedValue({
       Id: 1,
       Name: "Script 1",

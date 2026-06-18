@@ -49,14 +49,12 @@ describe("Alerts Domain Handler", () => {
     mockAlertsGet.mockClear();
     mockAlertsAcknowledge.mockClear();
 
-    // Reset mock implementations to the real API response shape
-    mockAlertsList.mockResolvedValue({
-      TotalRecords: 2,
-      Data: [
-        { Id: 1, Name: "Alert 1", Severity: 3 },
-        { Id: 2, Name: "Alert 2", Severity: 1 },
-      ],
-    });
+    // Reset mock implementations to the real API response shape:
+    // Automate list endpoints return a bare JSON array (issue #35).
+    mockAlertsList.mockResolvedValue([
+      { Id: 1, Name: "Alert 1", Severity: 3 },
+      { Id: 2, Name: "Alert 2", Severity: 1 },
+    ]);
     mockAlertsGet.mockResolvedValue({
       Id: 1,
       Name: "Alert 1",
