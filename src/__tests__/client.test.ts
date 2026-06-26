@@ -9,7 +9,7 @@ import { getCredentials, getClient, clearClient } from "../utils/client.js";
 // Mock the node-connectwise-automate library. The constructor stores the
 // resolved config so tests can assert the auth shape that was passed in.
 vi.mock("@wyre-technology/node-connectwise-automate", () => ({
-  ConnectWiseAutomateClient: vi.fn().mockImplementation((config) => ({
+  ConnectWiseAutomateClient: vi.fn().mockImplementation(function (config) { return ({
     config,
     computers: {
       list: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock("@wyre-technology/node-connectwise-automate", () => ({
     locations: {
       list: vi.fn(),
     },
-  })),
+  }) }),
 }));
 
 /**
